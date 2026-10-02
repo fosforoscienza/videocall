@@ -407,6 +407,8 @@ export default function VideoRoom({
       }, 2000);
     };
     room.on(RoomEvent.MediaDevicesError, checkDevices);
+    // Appena microfono o fotocamera partono (anche al secondo tentativo) l'avviso sparisce da solo
+    room.on(RoomEvent.LocalTrackPublished, () => setMediaError((e) => (e.startsWith("Non riesco ad accendere") ? "" : e)));
 
     let cancelled = false;
     (async () => {
@@ -419,10 +421,23 @@ export default function VideoRoom({
       if (cancelled) return;
       joined = true;
       setConnected(true);
-      // Fotocamera e microfono accesi in automatico (salvo scelta diversa nella sala d'attesa)
+      // Fotocamera e microfono accesi in automatico (salvo scelta diversa nella sala d'attesa).
+      // Entrambi in una sola richiesta al browser: un solo permesso da dare e niente conflitti tra le due
+      // richieste. Se non va (un dispositivo occupato o non permesso) si riprova uno alla volta.
       const lp = room.localParticipant;
-      if (initial.mic) await lp.setMicrophoneEnabled(true).catch(() => {});
-      else if (lp.permissions?.canPublish !== false) {
+      if (initial.mic && initial.camera) {
+        await lp.enableCameraAndMicrophone().catch(() => {});
+        if (cancelled) return;
+        if (!lp.isMicrophoneEnabled || !lp.isCameraEnabled) await new Promise((r) => setTimeout(r, 600));
+      }
+      if (initial.mic) {
+        if (!lp.isMicrophoneEnabled) await lp.setMicrophoneEnabled(true).catch(() => {});
+        // il microfono a volte è ancora occupato per un attimo (es. appena rilasciato dall'anteprima): un altro tentativo
+        if (!cancelled && !lp.isMicrophoneEnabled) {
+          await new Promise((r) => setTimeout(r, 1000));
+          if (!cancelled) await lp.setMicrophoneEnabled(true).catch(() => {});
+        }
+      } else if (lp.permissions?.canPublish !== false) {
         // Microfono collegato ma spento (come nelle altre app di videochiamata): Chrome apre da solo
         // la finestrella cambiando scheda solo se la pagina sta usando microfono o fotocamera
         try {
@@ -434,7 +449,7 @@ export default function VideoRoom({
           // nessun microfono o permesso negato: si entra senza
         }
       }
-      await lp.setCameraEnabled(initial.camera).catch(() => {});
+      if (!cancelled && initial.camera !== lp.isCameraEnabled) await lp.setCameraEnabled(initial.camera).catch(() => {});
       if (cancelled) return;
       bump();
       checkDevices();
