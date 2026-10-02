@@ -69,7 +69,7 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
           📅 {call.starts_at ? formatWhen(call.starts_at) : "Data da decidere"}
           {due && <strong> · è ora di iniziare</strong>}
         </div>
-        {call.listen_only && <div className="call-plan-when">🎧 Solo ascolto e chat</div>}
+        {call.listen_only && <div className="call-plan-when">📺 Webinar (i partecipanti ascoltano e scrivono in chat)</div>}
         <div className="call-plan-when">
           {call.access === "open" ? "🔓 Accesso libero" : call.access === "password" ? "🔑 Con password" : "🚪 Sala d'attesa"}
           {call.needs_password && (

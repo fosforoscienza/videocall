@@ -100,7 +100,7 @@ export default function CallJoin({
   const tracksRef = useRef<LocalTrack[]>([]);
   const wantPreview = useRef(false);
   const [known, setKnown] = useState(me !== null);
-  // Solo ascolto: niente fotocamera né microfono, si guarda, si ascolta e si scrive in chat
+  // Webinar: niente fotocamera né microfono, si guarda, si ascolta e si scrive in chat
   const [listen, setListen] = useState(listenOnly);
   const listenRef = useRef(listenOnly);
   // Gli organizzatori (già riconosciuti) non scrivono la password della riunione
@@ -332,7 +332,7 @@ export default function CallJoin({
   );
 
   const hint = listen
-    ? "🎧 Solo ascolto: vedi e ascolti gli organizzatori e puoi scrivere in chat."
+    ? "📺 Webinar: vedi e ascolti gli organizzatori e puoi scrivere in chat."
     : "Si accenderanno fotocamera e microfono.";
 
   if (phase.kind === "form" || phase.kind === "scheduled") {
@@ -443,7 +443,7 @@ export default function CallJoin({
         {head}
         <div className="card call-form">
           {listen ? (
-            <p className="call-who">🎧 Videochiamata in solo ascolto: vedrai e ascolterai gli organizzatori e potrai scrivere in chat.</p>
+            <p className="call-who">📺 Webinar: vedrai e ascolterai gli organizzatori e potrai scrivere in chat.</p>
           ) : (
             <>
               <div className="call-preview">

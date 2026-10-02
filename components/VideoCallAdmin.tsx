@@ -88,7 +88,7 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
   return (
     <div className="scroll call-admin">
       <section className={`card section ${call ? "call-live" : ""}`}>
-        <h3>{call ? (call.listen_only ? "🔴 Videochiamata in corso · 🎧 solo ascolto" : "🔴 Videochiamata in corso") : "Videochiamata"}</h3>
+        <h3>{call ? (call.listen_only ? "🔴 Videochiamata in corso · 📺 webinar" : "🔴 Videochiamata in corso") : "Videochiamata"}</h3>
         {!configured && (
           <p className="error">
             Videochiamate non configurate: su Vercel mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET (vedi README).

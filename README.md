@@ -11,13 +11,13 @@ oppure si copia dentro un altro sito fatto con Next.js.
   password della riunione) oppure **sala d'attesa** (l'organizzatore ammette o rifiuta; password facoltativa).
 - **Stanze**: l'organizzatore divide la chiamata in gruppi e sposta i partecipanti; la chiamata termina da sola
   quando esce l'ultima persona.
-- **Riunione** (tutti parlano) oppure **solo ascolto** (i partecipanti guardano, ascoltano e scrivono in chat).
+- **Riunione** (tutti parlano) oppure **webinar** (i partecipanti guardano, ascoltano e scrivono in chat).
 - Fotocamera e microfono accesi in automatico; scelta di fotocamera, microfono e altoparlante.
 - **Condivisione schermo** con audio e **lavagna** sopra lo schermo (penna, evidenziatore, gomma).
 - **Chat** laterale, **co-organizzatori** (se l'organizzatore esce il ruolo passa da solo), silenzia uno o tutti.
 - Griglia senza spazi vuoti, persona **fissata in grande**, vista "**chi parla in grande**", più pagine con tante persone.
 - **Finestrella** (Picture-in-Picture) quando si cambia scheda: Chrome/Edge da computer la aprono da soli se la pagina
-  usa microfono o fotocamera; altrove (Safari, iPhone, iPad, solo ascolto) con il pulsante 🗗 Mini.
+  usa microfono o fotocamera; altrove (Safari, iPhone, iPad, webinar) con il pulsante della finestrella.
 - Ottimizzata per telefono e iPad.
 
 Audio e video passano da **LiveKit Cloud**; chiamate, sala d'attesa e impostazioni stanno su **Supabase**.

@@ -517,7 +517,7 @@ export default function VideoRoom({
   // I partecipanti non possono pubblicare (permesso dato dal server): guardano, ascoltano e scrivono in chat.
   // Sul "palco" restano organizzatori, co-organizzatori e chi trasmette qualcosa; gli altri sono solo contati.
   const listening = !!room && connected && !isHost(room.localParticipant) && room.localParticipant.permissions?.canPublish === false;
-  // Nelle stanze si parla sempre, anche se la plenaria è in solo ascolto
+  // Nelle stanze si parla sempre, anche se la plenaria è un webinar
   const listenMode = breakout ? false : host ? host.listenOnly : listening;
   const lastListening = useRef<boolean | null>(null);
   useEffect(() => {
@@ -535,7 +535,7 @@ export default function VideoRoom({
     if (lastListening.current !== null && lastListening.current !== listening) {
       setNotice(
         listening
-          ? "🎧 Ora la videochiamata è in solo ascolto: vedi e ascolti gli organizzatori e puoi scrivere in chat."
+          ? "📺 Ora la videochiamata è un webinar: vedi e ascolti gli organizzatori e puoi scrivere in chat."
           : "🎙️ Ora puoi accendere microfono e videocamera."
       );
     }
@@ -897,7 +897,7 @@ export default function VideoRoom({
     pipHintRef.current = () => {
       const lp = room?.localParticipant;
       const usingMedia = !!lp && (!!lp.getTrackPublication(Track.Source.Microphone)?.track || lp.isCameraEnabled);
-      if (listening) return "🗗 In solo ascolto la finestrella non si apre da sola (Chrome lo fa solo per chi usa microfono o fotocamera): premi il pulsante della finestrella prima di cambiare scheda.";
+      if (listening) return "🗗 Nei webinar la finestrella non si apre da sola (Chrome lo fa solo per chi usa microfono o fotocamera): premi il pulsante della finestrella prima di cambiare scheda.";
       if (!usingMedia) return "🗗 La finestrella si apre da sola solo con microfono o fotocamera collegati: premi il pulsante della finestrella prima di cambiare scheda.";
       return "🗗 La finestrella non si è aperta da sola? Si apre cambiando scheda (non riducendo la finestra a icona). Se ancora non va: icona a sinistra dell'indirizzo → Impostazioni sito → \"Picture in picture automatico\" → Consenti.";
     };
@@ -1193,14 +1193,14 @@ export default function VideoRoom({
 
       {connected && listenMode && (
         <div className="call-listen">
-          🎧 Solo ascolto{audience > 0 ? ` · ${audience} ${audience === 1 ? "persona" : "persone"} in ascolto` : ""}
+          📺 Webinar{audience > 0 ? ` · ${audience} ${audience === 1 ? "persona" : "persone"} in ascolto` : ""}
         </div>
       )}
 
       <div ref={body} className="call-body">
         {connected && listenMode && !all.length ? (
           <div className="call-empty">
-            <span aria-hidden>🎧</span>
+            <span aria-hidden>📺</span>
             <p>Aspettiamo l&apos;organizzatore: appena entra lo vedi e lo senti qui.</p>
           </div>
         ) : hasMain ? (
