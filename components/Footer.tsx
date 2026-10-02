@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 
-// Logo in fondo alla pagina (o il nome del sito, se il logo non c'è)
+// Fascia blu notte in fondo alla pagina, come il footer del sito: logo chiaro (o il nome, se manca) e titolare
 export default function Footer() {
   const [broken, setBroken] = useState(false);
   const img = useRef<HTMLImageElement>(null);
@@ -17,11 +17,14 @@ export default function Footer() {
   return (
     <footer className="footer">
       {broken ? (
-        <span className="footer-text">{VIDEO_CONFIG.brand.toUpperCase()}</span>
+        <span className="footer-text">{VIDEO_CONFIG.brand}</span>
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img ref={img} src={VIDEO_CONFIG.logo} alt={VIDEO_CONFIG.brand} className="footer-logo" onError={() => setBroken(true)} />
       )}
+      <span className="footer-small">
+        © {new Date().getFullYear()} <a href={VIDEO_CONFIG.siteUrl}>{VIDEO_CONFIG.owner}</a>
+      </span>
     </footer>
   );
 }

@@ -1,1 +1,0 @@
-Metti qui il logo del sito con il nome logo.png (o cambia il percorso in lib/video-config.ts).

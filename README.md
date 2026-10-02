@@ -96,7 +96,7 @@ Serve un sito Next.js con App Router (Next 15 o 16) e React 19.
    in giù (tutte con il prefisso `call-` o `pip-`). Copiale nel CSS del sito insieme alle variabili `:root` in cima.
    Le classi comuni più in alto (`.btn`, `.card`, `.input`, `.title`...) potrebbero avere lo stesso nome di classi del sito:
    copiale solo se non le hai, altrimenti adatta i colori.
-   Il font è Poppins (vedi `app/layout.tsx`); con un altro font basta cambiare `--font-poppins`.
+   Il font è Figtree (vedi `app/layout.tsx`); con un altro font basta cambiare `--font-main`.
 4. Esegui `supabase/schema.sql` sul database del sito (crea solo tabelle nuove; se hai già `app_settings` con le
    stesse colonne `key`, `value`, `updated_at` la riusa).
 5. Aggiungi le variabili d'ambiente di `.env.example`.
@@ -140,12 +140,13 @@ lasciare `login()` com'è (per gli iscritti in `video_members`) o farlo controll
 In [`lib/video-config.ts`](lib/video-config.ts):
 
 - `brand`: nome del sito (pagine e anteprima del link su WhatsApp)
-- `logo`: logo nella barra dei comandi (metti il file in `public/`, es. `public/logo.png`)
+- `logo`: logo chiaro per i fondi scuri (footer e barra dei comandi), `logoInk`: logo scuro per l'header bianco (file in `public/`)
 - `guestLogin`: `"members"` (nome utente + codice dalla tabella `video_members`) oppure `"name"` (basta il nome:
   chiunque abbia il link può chiedere di entrare, e con la sala d'attesa decidi tu chi far entrare)
 - testi del modulo d'accesso (`credentials`, `userPlaceholder`, `codePlaceholder`)
 
-Colori: variabili in cima a `app/globals.css` (`--bordeaux`, `--gold`, `--cream`...).
+Colori: variabili in cima a `app/globals.css` (`--f-cyan`, `--f-button`, `--f-ink`...): tema chiaro per le pagine,
+tema scuro (blu notte) per la stanza della videochiamata. Font: Figtree, in `app/fonts/`.
 
 ## File
 
