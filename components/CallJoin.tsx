@@ -6,11 +6,9 @@ import Icon from "./Icons";
 import VideoRoom, { type LeaveReason } from "./VideoRoom";
 import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoice, type DeviceKind } from "./DeviceSettings";
 import { useHostCall } from "@/lib/useHostCall";
-import { formatWhen, type BreakoutRoom, type JoinState } from "@/lib/video-types";
+import { formatWhen, type AccessMode, type BreakoutRoom, type JoinState } from "@/lib/video-types";
 import { fetchRoomTicket } from "@/lib/breakout-client";
 import { VIDEO_CONFIG } from "@/lib/video-config";
-
-const NAME_ONLY = VIDEO_CONFIG.guestLogin === "name";
 
 type Phase =
   | { kind: "form" }
@@ -58,7 +56,8 @@ export default function CallJoin({
   exists,
   me,
   showAppLink,
-  openAccess = false,
+  access = "waiting",
+  needsPassword = false,
   title = "",
   live = true,
   startsAt = null,
@@ -68,7 +67,9 @@ export default function CallJoin({
   title?: string;
   live?: boolean;
   startsAt?: string | null;
-  openAccess?: boolean;
+  // Come si entra in questa riunione (scelto dall'organizzatore) e se serve la password della riunione
+  access?: AccessMode;
+  needsPassword?: boolean;
   code: string;
   exists: boolean;
   me: { name: string } | null;
@@ -102,6 +103,10 @@ export default function CallJoin({
   // Solo ascolto: niente fotocamera né microfono, si guarda, si ascolta e si scrive in chat
   const [listen, setListen] = useState(listenOnly);
   const listenRef = useRef(listenOnly);
+  // Gli organizzatori (già riconosciuti) non scrivono la password della riunione
+  const askPassword = needsPassword && !showAppLink;
+  const enterLabel = access === "waiting" ? "Chiedi di entrare" : "Entra";
+
   const isHost = phase.kind === "room" && phase.host;
   const host = useHostCall(isHost);
 
@@ -182,7 +187,8 @@ export default function CallJoin({
       const res = await fetch(`/api/call/${code}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(withCredentials ? { username, password } : {}),
+        // la password (se serve) va anche a chi è già riconosciuto: il server la chiede finché non si è ammessi
+        body: JSON.stringify(withCredentials ? { name: username, password } : askPassword ? { password } : {}),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Errore, riprova");
@@ -352,9 +358,21 @@ export default function CallJoin({
                 <p className="call-who">
                   Entri come <strong>{name}</strong>
                 </p>
+                {askPassword && (
+                  <input
+                    className="input"
+                    placeholder="Password della riunione"
+                    aria-label="Password della riunione"
+                    type="password"
+                    autoComplete="off"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && join(false)}
+                  />
+                )}
                 {error && <p className="error">{error}</p>}
                 <button className="btn btn-gold" onClick={() => join(false)} disabled={loading}>
-                  {loading ? "Un attimo..." : openAccess ? "Entra" : "Chiedi di entrare"}
+                  {loading ? "Un attimo..." : enterLabel}
                 </button>
                 <p className="muted call-hint">{hint}</p>
               </>
@@ -381,35 +399,36 @@ export default function CallJoin({
             <p className="muted call-hint">
               {scheduled
                 ? "Accedi già adesso: entrerai appena inizia."
-                : openAccess
-                  ? "Inserisci i tuoi dati per entrare."
-                  : "Inserisci i tuoi dati per chiedere di entrare."}
+                : askPassword
+                  ? "Scrivi il tuo nome e la password della riunione."
+                  : access === "waiting"
+                    ? "Scrivi il tuo nome per chiedere di entrare."
+                    : "Scrivi il tuo nome per entrare."}
             </p>
             <input
               className="input"
-              placeholder={NAME_ONLY ? "Il tuo nome e cognome" : VIDEO_CONFIG.userPlaceholder}
+              placeholder="Il tuo nome e cognome"
               aria-label="Nome e cognome"
-              autoComplete={NAME_ONLY ? "name" : "username"}
-              autoCapitalize={NAME_ONLY ? "words" : "none"}
-              autoCorrect="off"
+              autoComplete="name"
+              autoCapitalize="words"
               spellCheck={false}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
-            {!NAME_ONLY && (
+            {askPassword && (
               <input
                 className="input"
-                placeholder={VIDEO_CONFIG.codePlaceholder}
-                aria-label="Codice socio"
+                placeholder="Password della riunione"
+                aria-label="Password della riunione"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="off"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             )}
             {error && <p className="error">{error}</p>}
             <button className="btn btn-gold" disabled={loading}>
-              {loading ? "Un attimo..." : scheduled ? "Accedi" : openAccess ? "Entra" : "Chiedi di entrare"}
+              {loading ? "Un attimo..." : scheduled ? "Accedi" : enterLabel}
             </button>
             <p className="muted call-hint">{hint}</p>
           </form>

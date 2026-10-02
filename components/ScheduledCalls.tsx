@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import type { HostCall } from "@/lib/useHostCall";
 import ListenToggle from "./ListenToggle";
-import { callSlug, formatWhen, fromLocalInput, toLocalInput, type CallInfo } from "@/lib/video-types";
-import { ENTER_WITH } from "@/lib/video-config";
+import { callSlug, DEFAULT_ACCESS, formatWhen, fromLocalInput, shareText, toLocalInput, type CallAccess, type CallInfo } from "@/lib/video-types";
+import AccessPicker from "./AccessPicker";
 
 const SOON = 15 * 60 * 1000;
 
 async function shareLink(call: CallInfo, link: string, onCopied: () => void) {
-  const text = `Videochiamata${call.title ? ` "${call.title}"` : ""}${call.starts_at ? ` — ${formatWhen(call.starts_at)}` : ""}. Entra con ${ENTER_WITH}`;
+  const text = shareText(call.title, call.needs_password ? call.password : "", call.starts_at ? formatWhen(call.starts_at) : undefined);
   const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
   if (nav.share) {
     await nav.share({ title: call.title || "Videochiamata", text, url: link }).catch(() => {});
@@ -24,6 +24,7 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
   const [title, setTitle] = useState(call.title ?? "");
   const [when, setWhen] = useState(call.starts_at ? toLocalInput(call.starts_at) : "");
   const [listen, setListen] = useState(!!call.listen_only);
+  const [access, setAccess] = useState<CallAccess>({ mode: call.access ?? DEFAULT_ACCESS.mode, password: call.password ?? "" });
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/call/${callSlug(call)}`;
   const startsAt = call.starts_at ? Date.parse(call.starts_at) : 0;
@@ -40,15 +41,17 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
         <input className="input" placeholder="Nome (facoltativo)" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Nome della videochiamata programmata" />
         <input className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Data e ora" />
         <ListenToggle value={listen} onChange={setListen} />
+        <AccessPicker value={access} onChange={setAccess} />
         <div className="row call-plan-actions">
           <button className="btn btn-ghost btn-small" onClick={() => setEditing(false)}>
             Annulla
           </button>
           <button
             className="btn btn-gold btn-small"
-            disabled={!when || host.busy}
+            disabled={!when || host.busy || (access.mode === "password" && !access.password.trim())}
             onClick={async () => {
-              if (await host.plan("update", { id: call.id, title: title.trim(), startsAt: fromLocalInput(when), listenOnly: listen })) setEditing(false);
+              const a = { mode: access.mode, password: access.password.trim() };
+              if (await host.plan("update", { id: call.id, title: title.trim(), startsAt: fromLocalInput(when), listenOnly: listen, access: a })) setEditing(false);
             }}
           >
             Salva
@@ -67,6 +70,14 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
           {due && <strong> · è ora di iniziare</strong>}
         </div>
         {call.listen_only && <div className="call-plan-when">🎧 Solo ascolto e chat</div>}
+        <div className="call-plan-when">
+          {call.access === "open" ? "🔓 Accesso libero" : call.access === "password" ? "🔑 Con password" : "🚪 Sala d'attesa"}
+          {call.needs_password && (
+            <>
+              {" · "}password <strong>{call.password}</strong>
+            </>
+          )}
+        </div>
       </div>
       <div className="row call-plan-actions">
         <button
@@ -110,6 +121,7 @@ export default function ScheduledCalls({ host }: { host: HostCall }) {
   const [title, setTitle] = useState("");
   const [when, setWhen] = useState("");
   const [listen, setListen] = useState(false);
+  const [access, setAccess] = useState<CallAccess>(DEFAULT_ACCESS);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30000);
@@ -128,26 +140,29 @@ export default function ScheduledCalls({ host }: { host: HostCall }) {
         </p>
       )}
       {host.scheduled.map((c) => (
-        <Item key={`${c.id}-${c.title}-${c.starts_at}-${c.listen_only}`} call={c} host={host} now={now} />
+        <Item key={`${c.id}-${c.title}-${c.starts_at}-${c.listen_only}-${c.access}-${c.password}`} call={c} host={host} now={now} />
       ))}
       {open ? (
         <div className="call-plan-item">
           <input className="input" placeholder="Nome (facoltativo)" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Nome della nuova videochiamata" />
           <input className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Data e ora della nuova videochiamata" />
           <ListenToggle value={listen} onChange={setListen} />
+          <AccessPicker value={access} onChange={setAccess} />
           <div className="row call-plan-actions">
             <button className="btn btn-ghost btn-small" onClick={() => setOpen(false)}>
               Annulla
             </button>
             <button
               className="btn btn-gold btn-small"
-              disabled={!when || host.busy}
+              disabled={!when || host.busy || (access.mode === "password" && !access.password.trim())}
               onClick={async () => {
-                if (await host.plan("create", { title: title.trim(), startsAt: fromLocalInput(when), listenOnly: listen })) {
+                const a = { mode: access.mode, password: access.password.trim() };
+                if (await host.plan("create", { title: title.trim(), startsAt: fromLocalInput(when), listenOnly: listen, access: a })) {
                   setOpen(false);
                   setTitle("");
                   setWhen("");
                   setListen(false);
+                  setAccess(DEFAULT_ACCESS);
                 }
               }}
             >

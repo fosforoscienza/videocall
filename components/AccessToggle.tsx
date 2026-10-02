@@ -1,34 +1,52 @@
 "use client";
 
+import { useState } from "react";
 import type { HostCall } from "@/lib/useHostCall";
+import { DEFAULT_ACCESS, type CallAccess } from "@/lib/video-types";
+import AccessPicker from "./AccessPicker";
 import ListenToggle from "./ListenToggle";
-import { ENTER_WITH } from "@/lib/video-config";
 
-// Scelte dell'organizzatore: sala d'attesa o accesso libero, chi può condividere lo schermo
-// e, a chiamata in corso, se i partecipanti possono parlare o solo ascoltare
+// Scelte dell'organizzatore: a chiamata in corso come si entra (libero, password, sala d'attesa) e se i
+// partecipanti possono parlare o solo ascoltare; sempre, chi può condividere lo schermo
 export default function AccessToggle({ host }: { host: HostCall }) {
+  const call = host.call;
+  const saved: CallAccess = call ? { mode: call.access ?? DEFAULT_ACCESS.mode, password: call.password ?? "" } : DEFAULT_ACCESS;
+  // Modifica in corso (null = mostra quella salvata)
+  const [draft, setDraft] = useState<CallAccess | null>(null);
+  const shown = draft ?? saved;
+  const changed = !!draft && (draft.mode !== saved.mode || draft.password.trim() !== saved.password);
+  const invalid = shown.mode === "password" && !shown.password.trim();
+
   return (
     <div className="section">
-      {host.call && <ListenToggle value={host.listenOnly} onChange={host.setListenOnly} disabled={host.busy} live />}
-      <div className="view-toggle">
-        <button className={host.openAccess ? "" : "active"} onClick={() => host.setOpenAccess(false)} disabled={host.busy}>
-          Sala d&apos;attesa
-        </button>
-        <button className={host.openAccess ? "active" : ""} onClick={() => host.setOpenAccess(true)} disabled={host.busy}>
-          Accesso libero
-        </button>
-      </div>
-      <p className="muted" style={{ margin: 0 }}>
-        {host.openAccess
-          ? `Chi apre il link ed entra con ${ENTER_WITH} è subito nella videochiamata.`
-          : "Chi apre il link aspetta finché non lo ammetti."}
-      </p>
+      {call && (
+        <>
+          <ListenToggle value={host.listenOnly} onChange={host.setListenOnly} disabled={host.busy} live />
+          <AccessPicker value={shown} onChange={setDraft} disabled={host.busy} />
+          {changed && (
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost btn-small" onClick={() => setDraft(null)} disabled={host.busy}>
+                Annulla
+              </button>
+              <button
+                className="btn btn-gold btn-small"
+                disabled={host.busy || invalid}
+                onClick={async () => {
+                  if (await host.setAccess({ mode: shown.mode, password: shown.password.trim() })) setDraft(null);
+                }}
+              >
+                Salva accesso
+              </button>
+            </div>
+          )}
+        </>
+      )}
       <div className="view-toggle">
         <button className={host.shareAll ? "" : "active"} onClick={() => host.setShareAll(false)} disabled={host.busy}>
-          🖥️ Solo organizzatori
+          Schermo: solo organizzatori
         </button>
         <button className={host.shareAll ? "active" : ""} onClick={() => host.setShareAll(true)} disabled={host.busy}>
-          🖥️ Tutti
+          Schermo: tutti
         </button>
       </div>
       <p className="muted" style={{ margin: 0 }}>

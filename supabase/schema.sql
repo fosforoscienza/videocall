@@ -4,7 +4,9 @@
 
 create extension if not exists pgcrypto;
 
--- Impostazioni: sala d'attesa o accesso libero, condivisione schermo, solo ascolto e co-organizzatori di ogni chiamata
+-- Impostazioni: accesso (libero, password, sala d'attesa), condivisione schermo, solo ascolto, co-organizzatori
+-- e stanze di ogni chiamata. Non ci sono utenti: gli organizzatori sono in VIDEO_ORGANIZERS su Vercel,
+-- i partecipanti scrivono solo il nome entrando dal link.
 create table if not exists public.app_settings (
   key         text primary key,
   value       text not null,
@@ -27,7 +29,7 @@ create table if not exists public.video_calls (
 alter table public.video_calls enable row level security;
 
 -- Richieste di ingresso (sala d'attesa): l'organizzatore le accetta o le rifiuta.
--- identity = id dell'utente dato da lib/video-auth.ts (es. "m:<id iscritto>", "o:<organizzatore>")
+-- identity = id dato da lib/video-auth.ts ("g:<casuale>" per i partecipanti, "o:<nome>" per gli organizzatori)
 create table if not exists public.video_call_requests (
   call_id       uuid not null references public.video_calls (id) on delete cascade,
   identity      text not null,
@@ -38,19 +40,3 @@ create table if not exists public.video_call_requests (
   primary key (call_id, identity)
 );
 alter table public.video_call_requests enable row level security;
-
--- Iscritti che possono entrare con nome utente + codice (guestLogin = "members" in lib/video-config.ts).
--- Si riempie a mano o importando un CSV (Table Editor → video_members → Insert → Import data from CSV)
--- con le colonne username, code, name. Non serve se usi guestLogin = "name" o gli utenti di un altro sito.
-create table if not exists public.video_members (
-  id          uuid primary key default gen_random_uuid(),
-  username    text not null,
-  code        text not null,
-  name        text,
-  created_at  timestamptz not null default now()
-);
-create unique index if not exists video_members_username on public.video_members (lower(username));
-alter table public.video_members enable row level security;
-
--- Esempio:
--- insert into public.video_members (username, code, name) values ('mario.rossi', '1234', 'Mario Rossi');

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { activeCall, autoEndIfEmpty, cleanTitle, endCall, isOpenAccess, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured } from "@/lib/video";
+import { activeCall, autoEndIfEmpty, cleanAccess, cleanTitle, endCall, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,6 @@ export async function GET() {
   return NextResponse.json(
     {
       configured: videoConfigured(),
-      openAccess: await isOpenAccess(),
       shareAll: await isShareAll(),
       call,
       requests,
@@ -40,7 +39,10 @@ export async function POST(req: Request) {
     );
   }
   const body = await req.json().catch(() => ({}));
-  const { call, error, warning } = await startCall(admin.name, cleanTitle(body.title), body.listenOnly === true);
+  const access = body.access === undefined ? undefined : cleanAccess(body.access);
+  if (access === null) return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });
+  if (access && "error" in access) return NextResponse.json({ error: access.error }, { status: 400 });
+  const { call, error, warning } = await startCall(admin.name, cleanTitle(body.title), body.listenOnly === true, access);
   if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json({ call, warning });
 }

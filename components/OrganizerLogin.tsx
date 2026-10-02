@@ -46,7 +46,7 @@ export default function OrganizerLogin({ demo }: { demo?: { name: string; passwo
         <input
           className="input"
           placeholder="Nome organizzatore"
-          aria-label="Nome e cognome"
+          aria-label="Nome organizzatore"
           autoComplete="username"
           autoCapitalize="none"
           value={username}
@@ -55,7 +55,7 @@ export default function OrganizerLogin({ demo }: { demo?: { name: string; passwo
         <input
           className="input"
           placeholder="Password"
-          aria-label="Codice socio"
+          aria-label="Password"
           type="password"
           autoComplete="current-password"
           value={password}

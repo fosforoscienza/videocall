@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playSound } from "./sounds";
-import type { CallInfo, CallRequest, HostAction } from "./video-types";
+import type { CallAccess, CallInfo, CallRequest, HostAction } from "./video-types";
 
-type PlanData = { id?: string; title?: string; startsAt?: string; listenOnly?: boolean };
+type PlanData = { id?: string; title?: string; startsAt?: string; listenOnly?: boolean; access?: CallAccess };
 
 export type HostCall = {
   loaded: boolean;
   configured: boolean;
-  openAccess: boolean;
   shareAll: boolean;
   // Chiamata in corso in solo ascolto (i partecipanti non parlano)
   listenOnly: boolean;
@@ -20,12 +19,13 @@ export type HostCall = {
   pending: CallRequest[];
   error: string;
   busy: boolean;
-  start: (title?: string, listenOnly?: boolean) => Promise<void>;
+  start: (title?: string, listenOnly?: boolean, access?: CallAccess) => Promise<boolean>;
   rename: (title: string) => Promise<void>;
   end: () => Promise<void>;
   // room: stanza in cui si trova chi agisce (per silenziare lì), vuoto = plenaria
   act: (action: HostAction, identity?: string, trackSid?: string, room?: string | null) => Promise<void>;
-  setOpenAccess: (on: boolean) => Promise<void>;
+  // Accesso alla chiamata in corso: libero, password o sala d'attesa
+  setAccess: (access: CallAccess) => Promise<boolean>;
   setShareAll: (on: boolean) => Promise<void>;
   setListenOnly: (on: boolean) => Promise<void>;
   // Videochiamate programmate
@@ -37,7 +37,6 @@ export type HostCall = {
 export function useHostCall(enabled = true): HostCall {
   const [loaded, setLoaded] = useState(false);
   const [configured, setConfigured] = useState(true);
-  const [openAccess, setOpen] = useState(false);
   const [shareAll, setShare] = useState(false);
   const [call, setCall] = useState<CallInfo | null>(null);
   const [scheduled, setScheduled] = useState<CallInfo[]>([]);
@@ -56,7 +55,6 @@ export function useHostCall(enabled = true): HostCall {
         return;
       }
       setConfigured(data.configured);
-      setOpen(data.openAccess === true);
       setShare(data.shareAll === true);
       setCall(data.call);
       setScheduled(data.scheduled ?? []);
@@ -109,13 +107,12 @@ export function useHostCall(enabled = true): HostCall {
   );
 
   const start = useCallback(
-    async (title = "", listenOnly = false) => {
-      await send("/api/admin/call", {
+    (title = "", listenOnly = false, access?: CallAccess) =>
+      send("/api/admin/call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, listenOnly }),
-      });
-    },
+        body: JSON.stringify({ title, listenOnly, access }),
+      }),
     [send]
   );
   const rename = useCallback(
@@ -158,15 +155,13 @@ export function useHostCall(enabled = true): HostCall {
     [send]
   );
 
-  const setOpenAccess = useCallback(
-    async (on: boolean) => {
-      setOpen(on);
-      await send("/api/admin/call/settings", {
+  const setAccess = useCallback(
+    (access: CallAccess) =>
+      send("/api/admin/call/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openAccess: on }),
-      });
-    },
+        body: JSON.stringify({ access }),
+      }),
     [send]
   );
 
@@ -197,8 +192,7 @@ export function useHostCall(enabled = true): HostCall {
   return {
     loaded,
     configured,
-    openAccess,
-    setOpenAccess,
+    setAccess,
     shareAll,
     setShareAll,
     listenOnly: call?.listen_only === true,

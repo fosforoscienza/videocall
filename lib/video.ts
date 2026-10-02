@@ -1,12 +1,17 @@
 import "server-only";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 import { isDemo } from "./demo-db";
 import { supabaseAdmin } from "./supabase-admin";
 import { currentUser, type VideoUser } from "./video-auth";
 import {
   BREAKOUT_TOPIC,
+  DEFAULT_ACCESS,
   isLive,
+  MAX_PASSWORD,
+  needsPassword,
+  type AccessMode,
+  type CallAccess,
   MAX_BREAKOUT_NAME,
   MAX_BREAKOUTS,
   type BreakoutRoom,
@@ -181,13 +186,45 @@ export async function applyGuestPermissionsInRoom(callId: string) {
 
 // ---------- database ----------
 
-// Ingresso: con la sala d'attesa (predefinita) l'organizzatore ammette uno per uno;
-// con l'accesso libero chi ha il link entra subito. Salvato in app_settings.
-const OPEN_KEY = "video_open_access";
+// Ingresso, scelto per ogni riunione: libero, con password o dalla sala d'attesa. Salvato in app_settings.
+const accessKey = (callId: string) => `video_access:${callId}`;
+const MODES: AccessMode[] = ["open", "password", "waiting"];
 
-export async function isOpenAccess() {
-  const { data, error } = await supabaseAdmin().from("app_settings").select("value").eq("key", OPEN_KEY).maybeSingle();
-  return !error && data?.value === "1";
+// Controlla la scelta che arriva dal browser (con "password" la password è obbligatoria)
+export function cleanAccess(raw: unknown): CallAccess | { error: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as { mode?: unknown; password?: unknown };
+  if (!MODES.includes(r.mode as AccessMode)) return null;
+  const mode = r.mode as AccessMode;
+  const password = mode === "open" ? "" : String(r.password ?? "").normalize("NFC").trim().slice(0, MAX_PASSWORD);
+  if (mode === "password" && !password) return { error: "Scegli la password della riunione" };
+  return { mode, password };
+}
+
+export async function getAccess(callId: string): Promise<CallAccess> {
+  const { data } = await supabaseAdmin().from("app_settings").select("value").eq("key", accessKey(callId)).maybeSingle();
+  if (!data) return DEFAULT_ACCESS;
+  try {
+    const a = cleanAccess(JSON.parse(data.value));
+    return a && !("error" in a) ? a : DEFAULT_ACCESS;
+  } catch {
+    return DEFAULT_ACCESS;
+  }
+}
+
+export async function setAccess(callId: string, access: CallAccess) {
+  const { error } = await supabaseAdmin()
+    .from("app_settings")
+    .upsert({ key: accessKey(callId), value: JSON.stringify(access), updated_at: new Date().toISOString() });
+  return { error: error ? DB_UPDATE_NEEDED : undefined };
+}
+
+// Password della riunione giusta? (confronto che non rivela dai tempi di risposta quanto è giusta)
+export function passwordMatches(access: CallAccess, given: unknown) {
+  if (!needsPassword(access)) return true;
+  const a = createHash("sha256").update(String(given ?? "").normalize("NFC").trim()).digest();
+  const b = createHash("sha256").update(access.password).digest();
+  return timingSafeEqual(a, b);
 }
 
 // Condivisione schermo permessa a tutti (non solo agli organizzatori). Salvata in app_settings.
@@ -221,23 +258,32 @@ export async function setListenOnly(callId: string, on: boolean) {
   return { error: error ? DB_UPDATE_NEEDED : undefined };
 }
 
-// Aggiunge listen_only alle chiamate (una sola lettura per tutte)
+// Aggiunge solo ascolto e accesso (modo e password) alle chiamate, con una sola lettura per tutte
 async function withListenFlags(calls: CallInfo[]): Promise<CallInfo[]> {
   if (!calls.length) return calls;
   const { data } = await supabaseAdmin()
     .from("app_settings")
     .select("key,value")
-    .in("key", calls.map((c) => listenKey(c.id)));
-  const on = new Set(((data as { key: string; value: string }[] | null) ?? []).filter((r) => r.value === "1").map((r) => r.key));
-  return calls.map((c) => ({ ...c, listen_only: on.has(listenKey(c.id)) }));
+    .in("key", calls.flatMap((c) => [listenKey(c.id), accessKey(c.id)]));
+  const rows = new Map(((data as { key: string; value: string }[] | null) ?? []).map((r) => [r.key, r.value]));
+  return calls.map((c) => {
+    let access = DEFAULT_ACCESS;
+    try {
+      const a = cleanAccess(JSON.parse(rows.get(accessKey(c.id)) ?? "null"));
+      if (a && !("error" in a)) access = a;
+    } catch {
+      // impostazione non valida: sala d'attesa
+    }
+    return {
+      ...c,
+      listen_only: rows.get(listenKey(c.id)) === "1",
+      access: access.mode,
+      needs_password: needsPassword(access),
+      password: access.password,
+    };
+  });
 }
 
-export async function setOpenAccess(on: boolean) {
-  const { error } = await supabaseAdmin()
-    .from("app_settings")
-    .upsert({ key: OPEN_KEY, value: on ? "1" : "0", updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
-}
 
 // Nome (title) e programmazione (starts_at, started_at) sono colonne aggiunte dopo: finché il database
 // non è aggiornato le chiamate funzionano lo stesso, senza nome e senza programmazione.
@@ -300,7 +346,8 @@ export async function callByCode(code: string): Promise<CallInfo | null> {
 export async function startCall(
   createdBy: string,
   title = "",
-  listenOnly = false
+  listenOnly = false,
+  access: CallAccess = DEFAULT_ACCESS
 ): Promise<{ call?: CallInfo; error?: string; warning?: string }> {
   const current = await activeCall();
   if (current.error) return { error: current.error };
@@ -318,14 +365,16 @@ export async function startCall(
   if (res.error) return { error: DB_UPDATE_NEEDED };
   const call = res.data as unknown as CallInfo;
   if (listenOnly) await setListenOnly(call.id, true);
+  await setAccess(call.id, access);
   call.listen_only = listenOnly;
+  Object.assign(call, { access: access.mode, needs_password: needsPassword(access), password: access.password });
   const warning = title && !call.title ? `La videochiamata è partita senza nome. ${DB_UPDATE_NEEDED}` : undefined;
   return { call, warning };
 }
 
 // ---------- videochiamate programmate ----------
 
-export async function scheduleCall(createdBy: string, title: string, startsAt: string, listenOnly = false) {
+export async function scheduleCall(createdBy: string, title: string, startsAt: string, listenOnly = false, access: CallAccess = DEFAULT_ACCESS) {
   const { data, error } = await supabaseAdmin()
     .from("video_calls")
     .insert({ code: newCode(), created_by: createdBy, title: title || null, starts_at: startsAt })
@@ -334,10 +383,15 @@ export async function scheduleCall(createdBy: string, title: string, startsAt: s
   if (error) return { error: DB_UPDATE_NEEDED };
   const call = data as unknown as CallInfo;
   if (listenOnly) await setListenOnly(call.id, true);
+  await setAccess(call.id, access);
   return { call };
 }
 
-export async function updateScheduled(callId: string, title: string, startsAt: string, listenOnly?: boolean) {
+export async function updateScheduled(callId: string, title: string, startsAt: string, listenOnly?: boolean, access?: CallAccess) {
+  if (access) {
+    const res = await setAccess(callId, access);
+    if (res.error) return res;
+  }
   const { error } = await supabaseAdmin()
     .from("video_calls")
     .update({ title: title || null, starts_at: startsAt })

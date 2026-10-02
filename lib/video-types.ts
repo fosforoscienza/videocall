@@ -11,7 +11,28 @@ export type CallInfo = {
   started_at?: string | null;
   // Solo ascolto: i partecipanti vedono, ascoltano e scrivono in chat, ma non parlano
   listen_only?: boolean;
+  // Come si entra: libero, con la password della riunione o dalla sala d'attesa (eventualmente anche con password)
+  access?: AccessMode;
+  needs_password?: boolean;
+  // Password della riunione: solo per chi la gestisce, mai mandata ai partecipanti
+  password?: string;
 };
+
+// ---------- accesso alla riunione ----------
+// open: chi ha il link entra scrivendo il nome; password: nome + password della riunione;
+// waiting: nome (e password, se impostata) e poi l'organizzatore ammette dalla sala d'attesa
+export type AccessMode = "open" | "password" | "waiting";
+export type CallAccess = { mode: AccessMode; password: string };
+export const DEFAULT_ACCESS: CallAccess = { mode: "waiting", password: "" };
+export const MAX_PASSWORD = 64;
+export const needsPassword = (a: CallAccess) => a.mode === "password" || (a.mode === "waiting" && !!a.password);
+// "con il tuo nome" / "con il tuo nome e la password della riunione" (testi di condivisione e anteprime)
+export const enterWith = (withPassword: boolean) => (withPassword ? "il tuo nome e la password della riunione" : "il tuo nome");
+// Testo che accompagna il link condiviso (con la password della riunione, se c'è)
+export function shareText(title?: string | null, password?: string, when?: string) {
+  const what = `Videochiamata${title ? ` "${title}"` : ""}${when ? ` — ${when}` : ""}`;
+  return `${what}. Entra con ${enterWith(!!password)}${password ? `. Password: ${password}` : ""}`;
+}
 
 // Una chiamata è in corso quando è stata avviata (le chiamate create prima della programmazione non hanno started_at)
 export const isLive = (c: CallInfo) => c.started_at !== null;

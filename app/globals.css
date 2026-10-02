@@ -1912,3 +1912,31 @@ video.mirror {
 .call-check small {
   font-size: 0.78rem;
 }
+
+/* scelta dell'accesso alla riunione */
+.call-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.view-toggle.view-toggle-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.view-toggle-3 button {
+  font-size: 0.82rem;
+  padding: 10px 2px;
+}
+.call-pass {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+.call-pass code {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}

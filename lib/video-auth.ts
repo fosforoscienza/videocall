@@ -3,8 +3,6 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { DEMO_ORGANIZER, isDemo } from "./demo-db";
-import { supabaseAdmin } from "./supabase-admin";
-import { VIDEO_CONFIG } from "./video-config";
 
 // ============================================================================================
 //  ADATTATORE DEGLI UTENTI — l'unico file da cambiare per collegare le videochiamate a un altro sito.
@@ -14,10 +12,10 @@ import { VIDEO_CONFIG } from "./video-config";
 //    - name:      nome mostrato agli altri
 //    - organizer: true se può avviare e gestire le videochiamate
 //
-//  Implementazione inclusa:
+//  Implementazione inclusa (nessun elenco di utenti da gestire):
 //    - organizzatori dalla variabile d'ambiente VIDEO_ORGANIZERS ("mario:password1;anna:password2")
-//    - partecipanti dalla tabella video_members (username + codice), oppure solo con il nome
-//      se in lib/video-config.ts guestLogin = "name"
+//    - partecipanti: solo il nome, scritto entrando dal link (la password della riunione, se c'è,
+//      la controlla lib/video.ts per ogni riunione)
 //    - sessione in un cookie firmato (SESSION_SECRET), valida 7 giorni
 //
 //  Per usare il login di un altro sito: riscrivi currentUser() perché legga la sessione di quel sito
@@ -98,32 +96,21 @@ function organizers() {
     .filter((o) => o.name && o.password);
 }
 
-// Controlla i dati scritti nel modulo d'ingresso: restituisce l'utente o l'errore da mostrare
+// Accesso degli organizzatori (pagina di gestione): restituisce l'utente o l'errore da mostrare
 export async function login(rawUser: unknown, rawPassword: unknown): Promise<{ user: VideoUser } | { error: string; status: number }> {
   const username = clean(rawUser);
   const password = clean(rawPassword);
-  if (!username) return { error: "Scrivi il tuo nome", status: 400 };
-
-  // Organizzatori (variabile d'ambiente VIDEO_ORGANIZERS)
+  if (!username || !password) return { error: "Scrivi nome e password", status: 400 };
   const org = organizers().find((o) => lower(o.name) === lower(username));
-  if (org) {
-    if (password && same(password, org.password)) return { user: { id: org.id, name: org.name, organizer: true } };
-    return { error: "Credenziali non valide", status: 401 };
-  }
+  if (org && same(password, org.password)) return { user: { id: org.id, name: org.name, organizer: true } };
+  return { error: "Credenziali non valide", status: 401 };
+}
 
-  // Solo nome: chiunque abbia il link (l'organizzatore decide comunque chi far entrare)
-  if (VIDEO_CONFIG.guestLogin === "name") {
-    const name = username.replace(/\s+/g, " ").slice(0, 60);
-    return { user: { id: `g:${randomBytes(9).toString("base64url")}`, name, organizer: false } };
-  }
-
-  // Iscritti nella tabella video_members
-  if (!password) return { error: `Inserisci ${VIDEO_CONFIG.credentials}`, status: 400 };
-  const { data } = await supabaseAdmin()
-    .from("video_members")
-    .select("id,username,code,name")
-    .ilike("username", username.replace(/[\\%_]/g, (c) => `\\${c}`))
-    .maybeSingle();
-  if (!data || !same(password, String(data.code))) return { error: "Credenziali non valide", status: 401 };
-  return { user: { id: `m:${data.id}`, name: data.name || data.username, organizer: false } };
+// Partecipante che entra dal link con il suo nome. Chi ha già una sessione da partecipante tiene la stessa
+// identità (così resta ammesso se ricarica la pagina o cambia nome); il nome si aggiorna.
+export function guestUser(rawName: unknown, current: VideoUser | null): { user: VideoUser } | { error: string; status: number } {
+  const name = clean(rawName).replace(/\s+/g, " ").slice(0, 60);
+  if (!name) return { error: "Scrivi il tuo nome", status: 400 };
+  const id = current && !current.organizer && current.id.startsWith("g:") ? current.id : `g:${randomBytes(9).toString("base64url")}`;
+  return { user: { id, name, organizer: false } };
 }

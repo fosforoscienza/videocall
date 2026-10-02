@@ -23,9 +23,9 @@ import CallChat, { CHAT_MAX, CHAT_TOPIC, type ChatMessage } from "./CallChat";
 import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoice, type DeviceKind } from "./DeviceSettings";
 import { playSound } from "@/lib/sounds";
 import { applyBoard, BOARD_TOPIC, COLORS, syncMessages, type BoardMsg, type Stroke, type Tool } from "@/lib/board";
-import { ENTER_WITH, VIDEO_CONFIG } from "@/lib/video-config";
+import { VIDEO_CONFIG } from "@/lib/video-config";
 import { seenAssignment } from "@/lib/breakout-client";
-import { BREAKOUT_TOPIC, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
+import { BREAKOUT_TOPIC, shareText, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
 import Icon from "./Icons";
 import BreakoutEditor from "./BreakoutEditor";
 
@@ -908,7 +908,7 @@ export default function VideoRoom({
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
     if (nav.share) {
       await nav
-        .share({ title: title || "Videochiamata", text: `Entra nella videochiamata${title ? ` "${title}"` : ""} con ${ENTER_WITH}`, url: link })
+        .share({ title: title || "Videochiamata", text: shareText(title, host?.call?.needs_password ? host.call.password : ""), url: link })
         .catch(() => {});
       return;
     }

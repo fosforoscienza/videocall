@@ -6,9 +6,9 @@ import AccessToggle from "./AccessToggle";
 import ScheduledCalls from "./ScheduledCalls";
 import ListenToggle from "./ListenToggle";
 import type { HostCall } from "@/lib/useHostCall";
-import { callSlug, type BreakoutRoom } from "@/lib/video-types";
+import { callSlug, DEFAULT_ACCESS, shareText, type BreakoutRoom, type CallAccess } from "@/lib/video-types";
+import AccessPicker from "./AccessPicker";
 import { fetchRoomTicket } from "@/lib/breakout-client";
-import { ENTER_WITH } from "@/lib/video-config";
 
 // Scheda Video dell'organizzatore: avvia la videochiamata, condivide il link, decide chi entra
 export default function VideoCallAdmin({ host }: { host: HostCall }) {
@@ -27,6 +27,7 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
   // Nome scelto prima di avviare / nome in modifica durante la chiamata (null = non in modifica)
   const [newTitle, setNewTitle] = useState("");
   const [newListen, setNewListen] = useState(false);
+  const [newAccess, setNewAccess] = useState<CallAccess>(DEFAULT_ACCESS);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
   const link = call && typeof window !== "undefined" ? `${window.location.origin}/call/${callSlug(call)}` : "";
@@ -52,7 +53,7 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
     if (!nav.share) return copy();
     await nav
-      .share({ title: call?.title || "Videochiamata", text: `Entra nella videochiamata${call?.title ? ` "${call.title}"` : ""} con ${ENTER_WITH}`, url: link })
+      .share({ title: call?.title || "Videochiamata", text: shareText(call?.title, call?.needs_password ? call.password : ""), url: link })
       .catch(() => {});
   }
 
@@ -96,8 +97,8 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
         {!call ? (
           <>
             <p className="muted" style={{ margin: 0 }}>
-              Avvia una videochiamata e condividi il link: i partecipanti entrano con {ENTER_WITH} e tu decidi
-              chi far entrare.
+              Avvia una videochiamata e condividi il link: i partecipanti scrivono il loro nome e, se la scegli,
+              la password della riunione.
             </p>
             <label className="field">
               <span>Nome della videochiamata (facoltativo)</span>
@@ -110,14 +111,20 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
               />
             </label>
             <ListenToggle value={newListen} onChange={setNewListen} />
+            <div className="field">
+              <span>Accesso</span>
+              <AccessPicker value={newAccess} onChange={setNewAccess} />
+            </div>
             <button
               className="btn btn-gold"
               onClick={async () => {
-                await host.start(newTitle.trim(), newListen);
-                setNewTitle("");
-                setNewListen(false);
+                if (await host.start(newTitle.trim(), newListen, { mode: newAccess.mode, password: newAccess.password.trim() })) {
+                  setNewTitle("");
+                  setNewListen(false);
+                  setNewAccess(DEFAULT_ACCESS);
+                }
               }}
-              disabled={busy || !configured}
+              disabled={busy || !configured || (newAccess.mode === "password" && !newAccess.password.trim())}
             >
               {busy ? "Avvio..." : "Avvia videochiamata"}
             </button>
@@ -160,6 +167,11 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
                 </button>
               </div>
             </div>
+            {call.needs_password && (
+              <p className="call-pass">
+                Password della riunione: <code>{call.password}</code>
+              </p>
+            )}
             <button className="btn btn-gold" onClick={enter} disabled={joining}>
               {joining ? "Entro..." : "Entra nella videochiamata"}
             </button>
@@ -176,7 +188,7 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
         <AccessToggle host={host} />
       </section>
 
-      {call && (!host.openAccess || pending.length > 0) && (
+      {call && (call.access === "waiting" || pending.length > 0) && (
         <section className="card section">
           <h3>Sala d&apos;attesa ({pending.length})</h3>
           {pending.length === 0 && (

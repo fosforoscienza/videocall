@@ -5,9 +5,12 @@ oppure si copia dentro un altro sito fatto con Next.js.
 
 ## Cosa fa
 
-- Solo gli **organizzatori** avviano (o **programmano**) una videochiamata e condividono il link.
-- I partecipanti entrano dal link con **nome utente + codice** (oppure solo con il **nome**, a scelta).
-- **Sala d'attesa** (l'organizzatore ammette o rifiuta) oppure **accesso libero**.
+- Solo gli **organizzatori** (credenziali in `VIDEO_ORGANIZERS`) avviano (o **programmano**) una videochiamata
+  e condividono il link. Non c'è nessun elenco di utenti da gestire.
+- Per ogni riunione l'organizzatore sceglie l'accesso: **libero** (basta il nome), **con password** (nome +
+  password della riunione) oppure **sala d'attesa** (l'organizzatore ammette o rifiuta; password facoltativa).
+- **Stanze**: l'organizzatore divide la chiamata in gruppi e sposta i partecipanti; la chiamata termina da sola
+  quando esce l'ultima persona.
 - **Riunione** (tutti parlano) oppure **solo ascolto** (i partecipanti guardano, ascoltano e scrivono in chat).
 - Fotocamera e microfono accesi in automatico; scelta di fotocamera, microfono e altoparlante.
 - **Condivisione schermo** con audio e **lavagna** sopra lo schermo (penna, evidenziatore, gomma).
@@ -37,7 +40,7 @@ Per provare l'app o lavorare sulla grafica non serve Supabase: se mancano `NEXT_
 `SUPABASE_SERVICE_ROLE_KEY` l'app usa un database finto tenuto in memoria ([`lib/demo-db.ts`](lib/demo-db.ts)).
 
 - Organizzatore: **demo** / **demo** (se `VIDEO_ORGANIZERS` è vuota). `SESSION_SECRET` non serve.
-- Partecipanti di prova: **mario.rossi** / **1234** e **giulia.bianchi** / **5678**.
+- I partecipanti entrano dal link scrivendo un nome qualsiasi (e la password, se l'hai scelta per la riunione).
 - Si possono avviare e programmare chiamate, usare la sala d'attesa e le impostazioni anche senza LiveKit;
   per entrare nella stanza con audio e video servono comunque `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`.
 - I dati si azzerano quando il server riparte. Appena aggiungi le variabili Supabase la modalità demo si spegne da sola.
@@ -48,19 +51,18 @@ Funziona con qualsiasi sito (WordPress, Wix, HTML, Next.js...): le videochiamate
 per esempio `video.tuosito.it`, e dal sito si mette un link o un pulsante.
 
 1. **Database**: su Supabase apri *SQL Editor*, incolla tutto [`supabase/schema.sql`](supabase/schema.sql) e premi *Run*.
-2. **Partecipanti**: in *Table Editor → video_members* aggiungi gli iscritti (`username`, `code`, `name`),
-   anche importando un CSV. Se preferisci che si entri solo con il nome, salta questo passo e leggi *Personalizzare*.
-3. **LiveKit**: crea un progetto su LiveKit Cloud. Ti servono l'URL (`wss://...livekit.cloud`, in *Settings → Project*)
+   Contiene solo le tabelle delle riunioni (niente utenti).
+2. **LiveKit**: crea un progetto su LiveKit Cloud. Ti servono l'URL (`wss://...livekit.cloud`, in *Settings → Project*)
    e una API Key con il suo segreto (*Settings → API Keys*).
-4. **Codice su GitHub**: crea un repository nuovo e caricaci il contenuto di questa cartella.
-5. **Vercel**: *Add New → Project*, scegli il repository, e in *Environment Variables* inserisci le variabili di
+3. **Codice su GitHub**: crea un repository nuovo e caricaci il contenuto di questa cartella.
+4. **Vercel**: *Add New → Project*, scegli il repository, e in *Environment Variables* inserisci le variabili di
    [`.env.example`](.env.example):
    - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → *Project Settings → API*)
    - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
    - `SESSION_SECRET`: una frase lunga e casuale
    - `VIDEO_ORGANIZERS`: gli organizzatori, come `mario:password1;anna:password2`
-6. *Deploy*. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata e condividi il link.
-7. (Facoltativo) In Vercel → *Settings → Domains* collega un sottodominio come `video.tuosito.it`.
+5. *Deploy*. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata (scegli libero, password o sala d'attesa) e condividi il link.
+6. (Facoltativo) In Vercel → *Settings → Domains* collega un sottodominio come `video.tuosito.it`.
 
 Per provarla sul computer: copia `.env.example` in `.env.local`, compila i valori, poi `npm install` e `npm run dev`
 e apri http://localhost:3000.
@@ -130,8 +132,8 @@ export async function currentUser(): Promise<VideoUser | null> {
 ```
 
 Se gli utenti sono già entrati nel sito, alla pagina del link della videochiamata vedono subito
-"Entri come Mario Rossi". Il modulo con nome e codice usa `login()`: se il tuo sito ha già il suo login puoi
-lasciare `login()` com'è (per gli iscritti in `video_members`) o farlo controllare sul tuo database.
+"Entri come Mario Rossi". Chi non è riconosciuto scrive il suo nome (`guestUser()`); `login()` serve solo agli
+organizzatori della pagina di gestione.
 
 ---
 
@@ -141,9 +143,7 @@ In [`lib/video-config.ts`](lib/video-config.ts):
 
 - `brand`: nome del sito (pagine e anteprima del link su WhatsApp)
 - `logo`: logo chiaro per i fondi scuri (footer e barra dei comandi), `logoInk`: logo scuro per l'header bianco (file in `public/`)
-- `guestLogin`: `"members"` (nome utente + codice dalla tabella `video_members`) oppure `"name"` (basta il nome:
-  chiunque abbia il link può chiedere di entrare, e con la sala d'attesa decidi tu chi far entrare)
-- testi del modulo d'accesso (`credentials`, `userPlaceholder`, `codePlaceholder`)
+- `siteUrl`, `owner`: sito principale e titolare (header e footer)
 
 Colori: variabili in cima a `app/globals.css` (`--f-cyan`, `--f-button`, `--f-ink`...): tema chiaro per le pagine,
 tema scuro (blu notte) per la stanza della videochiamata. Font: Figtree, in `app/fonts/`.

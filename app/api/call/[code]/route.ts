@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { login, startSession, type VideoUser } from "@/lib/video-auth";
-import { ENTER_WITH } from "@/lib/video-config";
+import { currentUser, guestUser, startSession, type VideoUser } from "@/lib/video-auth";
 import {
   autoEndIfEmpty,
   callByCode,
@@ -8,18 +7,19 @@ import {
   currentParticipant,
   deleteRequest,
   getRequest,
+  getAccess,
   hostRole,
-  isOpenAccess,
+  passwordMatches,
   saveRequest,
   type Participant,
 } from "@/lib/video";
-import { codeFromSlug, isLive, type CallInfo, type JoinState } from "@/lib/video-types";
+import { codeFromSlug, isLive, needsPassword, type CallInfo, type JoinState } from "@/lib/video-types";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };
 
-const json = (state: JoinState | { error: string }, status = 200) =>
+const json = (state: JoinState | { error: string; needsPassword?: boolean }, status = 200) =>
   NextResponse.json(state, { status, headers: { "Cache-Control": "no-store" } });
 
 async function accepted(call: CallInfo, who: Participant) {
@@ -48,37 +48,46 @@ export async function GET(_req: Request, { params }: Ctx) {
   return json({ status: request?.status ?? "none", name: who.name });
 }
 
-// Chiede di entrare. Con i dati del modulo fa anche l'accesso; senza usa la sessione attuale.
+// Chiede di entrare. Con il modulo arriva il nome (e la password della riunione, se serve); senza si usa la
+// sessione attuale. Accesso libero o password giusta: si entra subito. Sala d'attesa: l'organizzatore ammette.
 export async function POST(req: Request, { params }: Ctx) {
   const code = codeFromSlug((await params).code);
   const call = await callByCode(code);
   if (!call) return json({ status: "ended" });
+  const access = await getAccess(call.id);
 
   const body = await req.json().catch(() => ({}));
+  const current = await currentUser();
   let user: VideoUser | undefined;
-  if (body.username !== undefined || body.password !== undefined) {
-    const result = await login(body.username, body.password);
+  if (body.name !== undefined) {
+    const result = guestUser(body.name, current?.organizer ? null : current);
     if ("error" in result) return json({ error: result.error }, result.status);
-    user = result.user;
+    user = current?.organizer ? undefined : result.user;
   }
-  const who = await currentParticipant(user);
-  if (!who) return json({ error: user ? "Utente non valido" : `Inserisci ${ENTER_WITH}` }, 401);
-  if (user) await startSession(user);
-  // Ancora da iniziare: l'accesso è fatto, si entra appena l'organizzatore la avvia
-  if (!isLive(call)) return json({ status: "scheduled", startsAt: call.starts_at ?? null, name: who.name });
+  const who = await currentParticipant(user ?? current);
+  if (!who) return json({ error: "Scrivi il tuo nome" }, 401);
+  if (who.host) return isLive(call) ? accepted(call, who) : json({ status: "scheduled", startsAt: call.starts_at ?? null, name: who.name });
 
-  if (who.host) return accepted(call, who);
   const request = await getRequest(call.id, who.identity);
-  // Chi è già stato ammesso rientra subito (pagina ricaricata, connessione caduta...)
-  if (request?.status === "accepted") return accepted(call, who);
-  // Accesso libero: si entra subito. Chi era stato rifiutato o tolto deve comunque essere riammesso.
-  if ((!request || request.status === "pending") && (await isOpenAccess())) {
-    const { error } = await saveRequest(call.id, who, "accepted", !request);
-    if (error) return json({ error }, 500);
-    return accepted(call, who);
+  // Chi è già stato ammesso rientra subito (pagina ricaricata, connessione caduta...), anche senza password
+  if (request?.status === "accepted") {
+    if (user) await startSession(user);
+    return isLive(call) ? accepted(call, who) : json({ status: "scheduled", startsAt: call.starts_at ?? null, name: who.name });
   }
-  const { error } = await saveRequest(call.id, who, "pending", request?.status !== "pending");
+  // Password della riunione: va scritta ogni volta che non si è ancora stati ammessi
+  if (needsPassword(access) && !passwordMatches(access, body.password)) {
+    return json({ error: body.password ? "Password della riunione non valida" : "Scrivi la password della riunione", needsPassword: true }, 401);
+  }
+  if (user) await startSession(user);
+
+  // Libero o con password: ammesso subito (anche prima dell'inizio: entrerà appena l'organizzatore la avvia).
+  // Chi era stato rifiutato o tolto deve comunque essere riammesso dall'organizzatore.
+  const direct = access.mode !== "waiting" && (!request || request.status === "pending");
+  const status = direct ? "accepted" : "pending";
+  const { error } = await saveRequest(call.id, who, status, !request || (status === "pending" && request.status !== "pending"));
   if (error) return json({ error }, 500);
+  if (!isLive(call)) return json({ status: "scheduled", startsAt: call.starts_at ?? null, name: who.name });
+  if (direct) return accepted(call, who);
   return json({ status: "pending", name: who.name });
 }
 
