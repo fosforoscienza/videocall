@@ -27,6 +27,34 @@ import {
 export const DB_UPDATE_NEEDED =
   "Il database va aggiornato: esegui supabase/schema.sql nel SQL Editor di Supabase.";
 
+type DbErr = { code?: string; message?: string } | null | undefined;
+
+// Errore del database spiegato: cosa non va e dove correggerlo (al posto di un generico "aggiorna il database")
+export function dbError(e: DbErr): string {
+  const msg = e?.message ?? "";
+  let host = "";
+  try {
+    host = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host;
+  } catch {
+    // indirizzo non valido: lo dice il caso "non riesco a raggiungere"
+  }
+  const where = host ? ` (progetto ${host})` : "";
+  if (e?.code === "42P01" || e?.code === "PGRST205" || /could not find the table|relation .* does not exist/i.test(msg)) {
+    return `Mancano le tabelle delle videochiamate${where}: in questo progetto Supabase apri SQL Editor, incolla tutto supabase/schema.sql e premi Run.`;
+  }
+  if (e?.code === "42703" || e?.code === "PGRST204") return DB_UPDATE_NEEDED;
+  if (e?.code === "42501" || /row-level security/i.test(msg)) {
+    return `Supabase blocca la scrittura${where}: in SUPABASE_SERVICE_ROLE_KEY serve la chiave service_role (o "secret"), non quella anon/publishable. Correggila su Vercel e fai Redeploy.`;
+  }
+  if (/invalid api key|no api key|jwt|unauthorized/i.test(msg) || e?.code === "PGRST301") {
+    return `Supabase rifiuta la chiave${where}: SUPABASE_SERVICE_ROLE_KEY deve essere la chiave service_role (o "secret") dello stesso progetto di NEXT_PUBLIC_SUPABASE_URL. Correggila su Vercel e fai Redeploy.`;
+  }
+  if (/fetch failed|enotfound|getaddrinfo|network|invalid url|requested path is invalid/i.test(msg)) {
+    return `Non riesco a raggiungere Supabase${where}: NEXT_PUBLIC_SUPABASE_URL deve essere tipo https://xxxx.supabase.co. Correggila su Vercel e fai Redeploy.`;
+  }
+  return `Errore del database${where}: ${msg || e?.code || "sconosciuto"}`;
+}
+
 const CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
 
 // Toglie spazi, virgolette e "NOME=" incollati per errore insieme al valore su Vercel
@@ -216,7 +244,7 @@ export async function setAccess(callId: string, access: CallAccess) {
   const { error } = await supabaseAdmin()
     .from("app_settings")
     .upsert({ key: accessKey(callId), value: JSON.stringify(access), updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Password della riunione giusta? (confronto che non rivela dai tempi di risposta quanto è giusta)
@@ -239,7 +267,7 @@ export async function setShareAll(on: boolean) {
   const { error } = await supabaseAdmin()
     .from("app_settings")
     .upsert({ key: SHARE_KEY, value: on ? "1" : "0", updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Solo ascolto: i partecipanti (tranne organizzatori e co-organizzatori) non possono parlare né accendere
@@ -255,7 +283,7 @@ export async function setListenOnly(callId: string, on: boolean) {
   const { error } = await supabaseAdmin()
     .from("app_settings")
     .upsert({ key: listenKey(callId), value: on ? "1" : "0", updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Aggiunge solo ascolto e accesso (modo e password) alle chiamate, con una sola lettura per tutte
@@ -314,7 +342,7 @@ export async function openCalls(): Promise<{ live: CallInfo | null; scheduled: C
   const { data, error, level } = await withColumnFallback((cols) =>
     supabaseAdmin().from("video_calls").select(cols).is("ended_at", null).order("created_at", { ascending: false })
   );
-  if (error) return { live: null, scheduled: [], canSchedule: false, error: DB_UPDATE_NEEDED };
+  if (error) return { live: null, scheduled: [], canSchedule: false, error: dbError(error) };
   const calls = await withListenFlags((data as CallInfo[] | null) ?? []);
   // Più recente per prima (in pratica ce n'è una sola)
   const live =
@@ -362,7 +390,7 @@ export async function startCall(
   for (let i = 1; i < payloads.length && missingColumn(res.error); i++) {
     res = await supabaseAdmin().from("video_calls").insert(payloads[i]).select(COLUMN_SETS[i]).single();
   }
-  if (res.error) return { error: DB_UPDATE_NEEDED };
+  if (res.error) return { error: dbError(res.error) };
   const call = res.data as unknown as CallInfo;
   if (listenOnly) await setListenOnly(call.id, true);
   await setAccess(call.id, access);
@@ -380,7 +408,7 @@ export async function scheduleCall(createdBy: string, title: string, startsAt: s
     .insert({ code: newCode(), created_by: createdBy, title: title || null, starts_at: startsAt })
     .select(COLUMN_SETS[0])
     .single();
-  if (error) return { error: DB_UPDATE_NEEDED };
+  if (error) return { error: dbError(error) };
   const call = data as unknown as CallInfo;
   if (listenOnly) await setListenOnly(call.id, true);
   await setAccess(call.id, access);
@@ -399,7 +427,7 @@ export async function updateScheduled(callId: string, title: string, startsAt: s
     .is("started_at", null)
     .is("ended_at", null);
   if (!error && typeof listenOnly === "boolean") return setListenOnly(callId, listenOnly);
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Annulla una chiamata programmata: il suo link smette di funzionare
@@ -409,7 +437,7 @@ export async function cancelScheduled(callId: string) {
     .update({ ended_at: new Date().toISOString() })
     .eq("id", callId)
     .is("started_at", null);
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // L'organizzatore avvia una chiamata programmata (anche prima dell'ora prevista)
@@ -425,7 +453,7 @@ export async function startScheduled(callId: string) {
     .eq("id", callId)
     .is("started_at", null)
     .is("ended_at", null);
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 export async function renameCall(callId: string, title: string) {
@@ -433,7 +461,7 @@ export async function renameCall(callId: string, title: string) {
     .from("video_calls")
     .update({ title: title || null })
     .eq("id", callId);
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Chiude la chiamata per tutti: chi è dentro viene scollegato e il link smette di funzionare
@@ -448,7 +476,7 @@ export async function endCall(callId: string) {
     await Promise.all(names.map((n) => svc.deleteRoom(n).catch(() => {})));
   }
   await saveBreakouts(callId, { rooms: [], assign: {} });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 export async function listRequests(callId: string): Promise<CallRequest[]> {
@@ -482,7 +510,7 @@ export async function saveRequest(callId: string, who: Participant, status: Call
       updated_at: now,
       ...(newRequest ? { requested_at: now } : {}),
     });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 export async function setRequestStatus(callId: string, identities: string[], status: CallStatus, onlyPending = false) {
@@ -493,7 +521,7 @@ export async function setRequestStatus(callId: string, identities: string[], sta
     .in("identity", identities);
   if (onlyPending) q = q.eq("status", "pending");
   const { error } = await q;
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 export async function deleteRequest(callId: string, identity: string) {
@@ -538,7 +566,7 @@ async function saveHosts(callId: string, hosts: Record<string, HostRole>) {
   const { error } = await supabaseAdmin()
     .from("app_settings")
     .upsert({ key: hostsKey(callId), value: JSON.stringify(hosts), updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 export async function hostRole(callId: string, identity: string): Promise<HostRole | null> {
@@ -676,7 +704,7 @@ export async function saveBreakouts(callId: string, b: Breakouts) {
   const { error } = await supabaseAdmin()
     .from("app_settings")
     .upsert({ key: breakoutKey(callId), value: JSON.stringify(b), updated_at: new Date().toISOString() });
-  return { error: error ? DB_UPDATE_NEEDED : undefined };
+  return { error: error ? dbError(error) : undefined };
 }
 
 // Avvisa chi è collegato (in plenaria e nelle stanze, anche quelle appena chiuse) che le stanze sono cambiate:
