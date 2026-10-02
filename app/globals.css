@@ -1,6 +1,6 @@
 /* Grafica allineata al sito fosforo: (fosforoscienza.it): Figtree, ciano del logo, blu notte.
-   Le pagine (accesso, gestione, ingresso dal link) sono chiare; la stanza della videochiamata
-   e la finestrella PiP sono scure. Tutti i colori passano dalle variabili qui sotto. */
+   Tutta l'app sta su un fondo blu notte sfumato; i colori passano dalle variabili qui sotto.
+   Per tornare alle pagine chiare basta la classe "theme-light" su <body> (vedi app/layout.tsx). */
 :root {
   --f-cyan: #00aeef;   /* ciano del logo */
   --f-accent: #0095d9; /* titoli e linee */
@@ -13,7 +13,33 @@
   --header-h: 64px;
   --footer-h: 56px;
 
-  /* tema chiaro (pagine) */
+  --app-bg: radial-gradient(ellipse at top, #12354d 0%, var(--f-ink) 55%, #06141f 100%);
+
+  /* tema scuro (pagine) */
+  --bg: #071a28;
+  --fg: #fff;
+  --fg-rgb: 255 255 255;
+  --text: rgb(255 255 255 / 0.82);
+  --mute: #93a8b8;
+  --title: var(--f-cyan);
+  --ink: var(--f-ink);
+  --accent: var(--f-cyan);
+  --accent-rgb: 0 174 239;
+  --on-accent: var(--f-ink);
+  --surface: rgb(255 255 255 / 0.06);
+  --surface-solid: #10293b;
+  --input-bg: rgb(5 18 28 / 0.6);
+  --deep-rgb: 5 18 28;
+  --shadow-rgb: 0 0 0;
+  --danger: #e5383b;
+  --danger-rgb: 229 56 59;
+  --danger-text: #ff9b9b;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 32px -8px rgb(0 0 0 / 0.45);
+}
+
+/* tema chiaro, come le pagine del sito (classe "theme-light" su <body>) */
+.theme-light {
+  --app-bg: radial-gradient(1200px 420px at 50% -180px, rgb(0 174 239 / 0.1), transparent 70%), #fff;
   --bg: #fff;
   --fg: var(--f-ink);          /* testo forte */
   --fg-rgb: 11 34 51;          /* per linee e fondi trasparenti */
@@ -57,6 +83,7 @@
   --danger: #e5383b;
   --danger-rgb: 229 56 59;
   --danger-text: #ff9b9b;
+  --title: #fff;
 }
 
 * {
@@ -74,7 +101,8 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background: var(--app-bg);
+  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-main), "Helvetica Neue", Arial, sans-serif;
   font-weight: 400;
@@ -118,9 +146,6 @@ textarea {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 24px 16px 16px;
-  background:
-    radial-gradient(1200px 420px at 50% -180px, rgb(0 174 239 / 0.1), transparent 70%),
-    var(--bg);
 }
 
 /* ---------- header (come la barra bianca del sito) ---------- */
@@ -132,8 +157,11 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  background: rgb(5 18 28 / 0.35);
+  border-bottom: 1px solid rgb(var(--fg-rgb) / 0.1);
+}
+.theme-light .header {
   background: #fff;
-  border-bottom: 1px solid rgb(11 34 51 / 0.1);
 }
 .header-brand {
   display: inline-flex;
@@ -144,10 +172,17 @@ textarea {
   width: 120px;
   height: auto;
 }
+.header-logo.on-light,
+.theme-light .header-logo.on-dark {
+  display: none;
+}
+.theme-light .header-logo.on-light {
+  display: block;
+}
 .header-label {
   font-weight: 600;
   font-size: 0.95rem;
-  color: var(--f-ink);
+  color: var(--fg);
   position: relative;
   padding: 6px 0;
 }
@@ -171,8 +206,13 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--f-ink);
+  background: rgb(5 18 28 / 0.6);
+  border-top: 1px solid rgb(255 255 255 / 0.08);
   color: rgb(255 255 255 / 0.72);
+}
+.theme-light .footer {
+  background: var(--f-ink);
+  border-top: none;
 }
 .footer-logo {
   width: 96px;
@@ -249,12 +289,12 @@ textarea {
   box-shadow: 0 6px 16px -6px rgb(var(--accent-rgb) / 0.55);
 }
 .btn-gold:hover:not(:disabled) {
-  background: var(--f-ink);
-  color: #fff;
-}
-.call-room .btn-gold:hover:not(:disabled) {
   background: #fff;
   color: var(--f-ink);
+}
+.theme-light .btn-gold:hover:not(:disabled) {
+  background: var(--f-ink);
+  color: #fff;
 }
 .btn-ghost {
   background: transparent;
@@ -325,14 +365,14 @@ textarea {
   letter-spacing: 0.14em;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--f-accent);
+  color: var(--title);
 }
 .login-hero .title {
   font-size: clamp(2.2rem, 9vw, 3rem);
   color: var(--fg);
 }
 .login-hero .title span {
-  color: var(--f-accent);
+  color: var(--title);
 }
 .login form {
   display: flex;
@@ -340,8 +380,10 @@ textarea {
   gap: 12px;
 }
 .login .card {
-  background: #fff;
   box-shadow: var(--shadow);
+}
+.theme-light .login .card {
+  background: #fff;
   border-color: rgb(11 34 51 / 0.06);
 }
 
@@ -705,6 +747,7 @@ textarea {
   gap: 8px;
   padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
   background: radial-gradient(ellipse at top, #12354d 0%, var(--f-ink) 55%, #06141f 100%);
+  background-color: var(--f-ink);
   color: var(--fg);
   font-family: var(--font-main), "Helvetica Neue", Arial, sans-serif;
 }
@@ -1241,7 +1284,13 @@ video.mirror {
   gap: 12px;
   padding-bottom: 8px;
 }
-.call-live {
+.call-live,
+.call-when {
+  border-color: rgb(0 174 239 / 0.4);
+  background: linear-gradient(135deg, rgb(0 174 239 / 0.18), rgb(255 255 255 / 0.04) 70%);
+}
+.theme-light .call-live,
+.theme-light .call-when {
   border-color: rgb(0 149 217 / 0.35);
   background: linear-gradient(135deg, #e2f5fd, #f3f7f9 70%);
 }
@@ -1446,8 +1495,6 @@ video.mirror {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border-color: rgb(0 149 217 / 0.35);
-  background: linear-gradient(135deg, #e2f5fd, #f3f7f9 70%);
 }
 .call-when-date {
   font-weight: 800;
