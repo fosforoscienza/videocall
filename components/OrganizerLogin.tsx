@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 
-// Accesso degli organizzatori (nomi e password nella variabile d'ambiente VIDEO_ORGANIZERS)
-export default function OrganizerLogin() {
+// Accesso degli organizzatori (nomi e password nella variabile d'ambiente VIDEO_ORGANIZERS).
+// demo: credenziali di prova da mostrare quando l'app gira senza database (lib/demo-db.ts)
+export default function OrganizerLogin({ demo }: { demo?: { name: string; password: string } }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,6 +38,11 @@ export default function OrganizerLogin() {
       </div>
       <form className="card" onSubmit={submit}>
         <p className="muted call-hint">Accesso per gli organizzatori. I partecipanti entrano dal link della videochiamata.</p>
+        {demo && (
+          <p className="muted call-hint">
+            Modalità demo, senza database: entra con <b>{demo.name}</b> / <b>{demo.password}</b>.
+          </p>
+        )}
         <input
           className="input"
           placeholder="Nome organizzatore"

@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
+import { DEMO_ORGANIZER, isDemo } from "./demo-db";
 import { supabaseAdmin } from "./supabase-admin";
 import { VIDEO_CONFIG } from "./video-config";
 
@@ -29,8 +30,11 @@ export type VideoUser = { id: string; name: string; organizer: boolean };
 const COOKIE = "video_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 giorni
 
+// In modalità demo (senza Supabase) basta una chiave fissa: non c'è niente di riservato da proteggere
+const DEMO_SECRET = "videochiamate-modalita-demo-senza-database";
+
 function secret() {
-  const s = process.env.SESSION_SECRET;
+  const s = process.env.SESSION_SECRET || (isDemo() ? DEMO_SECRET : undefined);
   if (!s || s.length < 16) throw new Error("SESSION_SECRET mancante o troppo corto (almeno 16 caratteri)");
   return new TextEncoder().encode(s);
 }
@@ -80,8 +84,10 @@ function same(a: string, b: string) {
   return timingSafeEqual(ha, hb);
 }
 
+// In modalità demo, se VIDEO_ORGANIZERS è vuota, si entra con demo / demo
 function organizers() {
-  return (process.env.VIDEO_ORGANIZERS ?? "")
+  const list = process.env.VIDEO_ORGANIZERS || (isDemo() ? `${DEMO_ORGANIZER.name}:${DEMO_ORGANIZER.password}` : "");
+  return list
     .split(";")
     .map((pair) => {
       const i = pair.indexOf(":");

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "crypto";
 import { AccessToken, RoomServiceClient, TrackSource } from "livekit-server-sdk";
+import { isDemo } from "./demo-db";
 import { supabaseAdmin } from "./supabase-admin";
 import { currentUser, type VideoUser } from "./video-auth";
 import { isLive, type CallInfo, type CallRequest, type CallStatus } from "./video-types";
@@ -52,8 +53,10 @@ export async function checkLiveKit(): Promise<string | null> {
   }
 }
 
+// In modalità demo (senza database) si possono avviare e programmare chiamate anche senza LiveKit,
+// per vedere console, sala d'attesa e pagine d'ingresso: manca solo la stanza con audio e video.
 export function videoConfigured() {
-  return config() !== null;
+  return config() !== null || isDemo();
 }
 
 const roomName = (callId: string) => `vc-${callId}`;
