@@ -24,7 +24,10 @@ import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoi
 import { playSound } from "@/lib/sounds";
 import { applyBoard, BOARD_TOPIC, COLORS, syncMessages, type BoardMsg, type Stroke, type Tool } from "@/lib/board";
 import { ENTER_WITH, VIDEO_CONFIG } from "@/lib/video-config";
+import { seenAssignment } from "@/lib/breakout-client";
+import { BREAKOUT_TOPIC, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
 import Icon from "./Icons";
+import BreakoutEditor from "./BreakoutEditor";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -190,8 +193,19 @@ export default function VideoRoom({
   claimUrl,
   onHostChange,
   onLeave,
+  code,
+  breakout = null,
+  onSwitchRoom,
+  initialNotice = "",
 }: {
   title?: string;
+  // Stanze: codice della chiamata, stanza in cui si è (null = plenaria) e spostamento in un'altra stanza
+  // (il genitore chiede il nuovo gettone e ricollega; restituisce l'errore da mostrare, se c'è)
+  code?: string;
+  breakout?: BreakoutRoom | null;
+  onSwitchRoom?: (roomId: string | null, media: { camera: boolean; mic: boolean }, notice?: string) => Promise<string | void>;
+  // avviso da mostrare appena entrati (es. "L'organizzatore ti ha spostato nella stanza...")
+  initialNotice?: string;
   // indirizzo per diventare organizzatore se quello attuale esce (solo dalla pagina del link)
   claimUrl?: string;
   // il server ha dato o tolto i poteri da organizzatore a questo partecipante
@@ -266,7 +280,7 @@ export default function VideoRoom({
   });
   // Telefono: i comandi secondari stanno nel menu "Altro"
   const [moreOpen, setMoreOpen] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(initialNotice);
   // Vero mentre spengo io il mio microfono: se si spegne in altro modo è stato l'organizzatore
   const selfMuting = useRef(false);
   const onLeaveRef = useRef(onLeave);
@@ -321,6 +335,11 @@ export default function VideoRoom({
     });
     // Disegni: si accettano solo quelli degli organizzatori
     room.on(RoomEvent.DataReceived, (payload: Uint8Array, from?: RemoteParticipant, _kind?: unknown, topic?: string) => {
+      // Stanze aperte, cambiate o chiuse: avviso mandato dal server (non da un partecipante)
+      if (topic === BREAKOUT_TOPIC && !from) {
+        loadBoRef.current();
+        return;
+      }
       if (topic === CHAT_TOPIC && from) {
         try {
           const m = JSON.parse(decoder.decode(payload)) as { id?: unknown; text?: unknown };
@@ -498,7 +517,8 @@ export default function VideoRoom({
   // I partecipanti non possono pubblicare (permesso dato dal server): guardano, ascoltano e scrivono in chat.
   // Sul "palco" restano organizzatori, co-organizzatori e chi trasmette qualcosa; gli altri sono solo contati.
   const listening = !!room && connected && !isHost(room.localParticipant) && room.localParticipant.permissions?.canPublish === false;
-  const listenMode = host ? host.listenOnly : listening;
+  // Nelle stanze si parla sempre, anche se la plenaria è in solo ascolto
+  const listenMode = breakout ? false : host ? host.listenOnly : listening;
   const lastListening = useRef<boolean | null>(null);
   useEffect(() => {
     if (!connected) return;
@@ -607,13 +627,99 @@ export default function VideoRoom({
   useEffect(() => {
     if (shareAllowed === null) return;
     if (lastShareAllowed.current !== null && lastShareAllowed.current !== shareAllowed) {
-      setNotice(shareAllowed ? "Ora puoi condividere il tuo schermo (pulsante 🖥️, da computer)." : "La condivisione dello schermo è tornata solo all'organizzatore.");
+      setNotice(shareAllowed ? "Ora puoi condividere il tuo schermo (pulsante di condivisione, da computer)." : "La condivisione dello schermo è tornata solo all'organizzatore.");
     }
     lastShareAllowed.current = shareAllowed;
   }, [shareAllowed]);
 
   // Poteri da organizzatore dati o tolti durante la chiamata (co-organizzatore, o organizzatore se quello è uscito)
   const meHost = room && connected ? isHost(room.localParticipant) : null;
+
+  // ---------- stanze ----------
+  // Stato delle stanze letto dal server: all'ingresso, a ogni avviso del server e ogni tanto di riserva
+  const [bo, setBo] = useState<BreakoutState | null>(null);
+  const [roomsOpen, setRoomsOpen] = useState(false);
+  const [editRooms, setEditRooms] = useState(false);
+  const [boBusy, setBoBusy] = useState(false);
+  const [boError, setBoError] = useState("");
+  const [switching, setSwitching] = useState(false);
+  const manager = !!host || !!meHost;
+  const loadBo = useCallback(async () => {
+    if (!code) return;
+    const res = await fetch(`/api/call/${code}/breakout`, { cache: "no-store" }).catch(() => null);
+    if (!res?.ok) return;
+    const data = (await res.json().catch(() => null)) as BreakoutState | null;
+    if (data && Array.isArray(data.rooms)) setBo(data);
+  }, [code]);
+  const loadBoRef = useRef(loadBo);
+  useLayoutEffect(() => {
+    loadBoRef.current = loadBo;
+  });
+  useEffect(() => {
+    if (!code || !connected || !onSwitchRoom) return;
+    loadBo();
+    // chi gestisce vede anche chi è in ogni stanza: aggiorna più spesso
+    const t = setInterval(() => document.visibilityState === "visible" && loadBo(), manager ? 5000 : 15000);
+    return () => clearInterval(t);
+  }, [code, connected, manager, loadBo, onSwitchRoom]);
+
+  const switchRoom = useCallback(
+    async (target: string | null, why?: string) => {
+      if (!onSwitchRoom || !room) return;
+      setSwitching(true);
+      setRoomsOpen(false);
+      const lp = room.localParticipant;
+      const err = await onSwitchRoom(target, { camera: lp.isCameraEnabled, mic: lp.isMicrophoneEnabled }, why);
+      // se va bene la stanza si ricollega da capo; altrimenti si resta qui con l'errore
+      if (err) {
+        setNotice(err);
+        setSwitching(false);
+      }
+    },
+    [onSwitchRoom, room]
+  );
+
+  // Spostamenti automatici: stanze chiuse → tutti in plenaria; nuova assegnazione dell'organizzatore → nella stanza.
+  // Chi torna in plenaria di sua scelta ci resta finché l'organizzatore non cambia la sua assegnazione.
+  const here = breakout?.id ?? null;
+  useEffect(() => {
+    if (!bo || !code || !connected || switching) return;
+    if (here && !bo.rooms.some((r) => r.id === here)) {
+      switchRoom(null, "Le stanze sono state chiuse: sei di nuovo in plenaria.");
+      return;
+    }
+    if (manager) return;
+    const before = seenAssignment.has(code) ? seenAssignment.get(code) : undefined;
+    seenAssignment.set(code, bo.mine);
+    if (before === bo.mine) return;
+    const target = bo.rooms.find((r) => r.id === bo.mine);
+    if (target && here !== target.id) switchRoom(target.id, `L'organizzatore ti ha spostato nella stanza "${target.name}".`);
+    else if (!target && here) switchRoom(null, "L'organizzatore ti ha riportato in plenaria.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bo, connected]);
+
+  const saveRooms = async (rooms: BreakoutRoom[], assign: Record<string, string>) => {
+    setBoBusy(true);
+    setBoError("");
+    const res = await fetch(`/api/call/${code}/breakout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rooms, assign }),
+    }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setBoBusy(false);
+    if (!res?.ok) {
+      setBoError(data?.error || "Non riesco a salvare le stanze, riprova");
+      return false;
+    }
+    setEditRooms(false);
+    loadBo();
+    return true;
+  };
+  const closeRooms = async () => {
+    if (!confirm("Chiudere tutte le stanze? Tutti tornano in plenaria.")) return;
+    if (await saveRooms([], {})) setRoomsOpen(false);
+  };
   const meCohost = room && connected ? isCohost(room.localParticipant) : false;
   const lastMeHost = useRef<boolean | null>(null);
   const lastMeCohost = useRef(false);
@@ -925,6 +1031,14 @@ export default function VideoRoom({
 
   const pending = host?.pending ?? [];
   const firstPending = pending[0];
+  // Stanze: la mia (se assegnato), chi può essere spostato e i nomi di chi è collegato in ogni stanza
+  const myRoom = bo?.rooms.find((r) => r.id === bo.mine) ?? null;
+  const canRooms = !!code && !!onSwitchRoom && manager;
+  const roomPeople = (host?.requests ?? []).filter((r) => r.status === "accepted").map((r) => ({ identity: r.identity, name: r.name }));
+  const nameOf = (id: string) =>
+    roomPeople.find((r) => r.identity === id)?.name ??
+    everyone.find((p) => p.identity === id)?.name ??
+    (id.startsWith("o:") ? id.slice(2) : "Partecipante");
 
   // Menu dell'organizzatore su ogni riquadro: fissa in grande, spegni microfono, togli dalla chiamata
   const tileMenu = (p: Participant) => () => setSheet(p.identity);
@@ -947,7 +1061,7 @@ export default function VideoRoom({
       onPin: () => setView({ ...view, pin: view.pin === p.identity ? null : p.identity }),
       onCohost: host && other ? () => host.act(isCohost(p) ? "remove_cohost" : "make_cohost", p.identity) : undefined,
       isCohost: isCohost(p),
-      onMute: host && other && p.isMicrophoneEnabled && micSid ? () => host.act("mute", p.identity, micSid) : undefined,
+      onMute: host && other && p.isMicrophoneEnabled && micSid ? () => host.act("mute", p.identity, micSid, here) : undefined,
       onRemove: host && other ? () => confirm(`Togliere ${p.name || p.identity} dalla videochiamata?`) && host.act("remove", p.identity) : undefined,
     };
   })();
@@ -1013,6 +1127,46 @@ export default function VideoRoom({
         <button className="call-banner call-banner-action" onClick={() => room.startAudio().catch(() => {})}>
           🔊 Tocca qui per sentire gli altri
         </button>
+      )}
+
+      {/* Stanze: dove sono e come spostarmi */}
+      {connected && bo && (bo.rooms.length > 0 || breakout) && (
+        <div className="call-roombar">
+          {breakout ? (
+            <span className="call-roombar-text">
+              Stanza <strong>{breakout.name}</strong>
+            </span>
+          ) : manager ? (
+            <span className="call-roombar-text">
+              Plenaria · {bo.rooms.length} {bo.rooms.length === 1 ? "stanza aperta" : "stanze aperte"}
+            </span>
+          ) : myRoom ? (
+            <span className="call-roombar-text">
+              Plenaria · la tua stanza è <strong>{myRoom.name}</strong>
+            </span>
+          ) : (
+            <span className="call-roombar-text">Plenaria · le stanze sono aperte</span>
+          )}
+          <div className="row">
+            {manager && (
+              <button className="btn btn-ghost btn-small" onClick={() => setRoomsOpen(true)}>
+                Stanze
+              </button>
+            )}
+            {breakout ? (
+              <button className="btn btn-gold btn-small" onClick={() => switchRoom(null)} disabled={switching}>
+                Torna in plenaria
+              </button>
+            ) : (
+              !manager &&
+              myRoom && (
+                <button className="btn btn-gold btn-small" onClick={() => switchRoom(myRoom.id)} disabled={switching}>
+                  Vai nella stanza
+                </button>
+              )
+            )}
+          </div>
+        </div>
       )}
 
       {/* Qualcuno bussa: l'organizzatore lo ammette o lo rifiuta senza aprire il pannello */}
@@ -1233,6 +1387,18 @@ export default function VideoRoom({
               }}
               onChange={changeDevice}
             />
+            {canRooms && (
+              <button
+                className="btn btn-gold"
+                onClick={() => {
+                  setDevicesOpen(false);
+                  if (bo?.rooms.length) setRoomsOpen(true);
+                  else setEditRooms(true);
+                }}
+              >
+                {bo?.rooms.length ? "Gestisci le stanze" : "Dividi in stanze"}
+              </button>
+            )}
             {"documentPictureInPicture" in window && (
               <label className="call-switch-row">
                 <input
@@ -1410,6 +1576,81 @@ export default function VideoRoom({
         </div>
       )}
 
+      {canRooms && roomsOpen && bo && (
+        <div className="modal-backdrop call-panel-backdrop" onClick={() => setRoomsOpen(false)}>
+          <div className="card modal call-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="topbar">
+              <h2 className="title">Stanze</h2>
+              <button className="call-close" onClick={() => setRoomsOpen(false)} aria-label="Chiudi">
+                ✕
+              </button>
+            </div>
+            {[{ id: "main", name: "Plenaria" }, ...bo.rooms].map((r) => {
+              const isHere = (r.id === "main" ? null : r.id) === here;
+              const present = bo.presence?.[r.id] ?? [];
+              const assigned = r.id === "main" ? [] : Object.entries(bo.assign ?? {}).filter(([, id]) => id === r.id);
+              return (
+                <section key={r.id} className="call-rooms-item">
+                  <div className="row call-panel-head">
+                    <h3>
+                      {r.name}
+                      {isHere && <span className="call-here"> · sei qui</span>}
+                    </h3>
+                    <button
+                      className={`btn btn-small ${isHere ? "btn-ghost" : "btn-gold"}`}
+                      onClick={() => switchRoom(r.id === "main" ? null : r.id)}
+                      disabled={isHere || switching}
+                    >
+                      {isHere ? "Sei qui" : "Entra"}
+                    </button>
+                  </div>
+                  <p className="muted call-sheet-label">
+                    {present.length ? `Collegati: ${present.map(nameOf).join(", ")}` : "Nessuno collegato"}
+                    {r.id !== "main" && ` · ${assigned.length} ${assigned.length === 1 ? "assegnato" : "assegnati"}`}
+                  </p>
+                </section>
+              );
+            })}
+            {boError && <p className="error">{boError}</p>}
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setRoomsOpen(false);
+                setEditRooms(true);
+              }}
+            >
+              Modifica stanze e partecipanti
+            </button>
+            <button className="btn btn-danger" onClick={closeRooms} disabled={boBusy}>
+              Chiudi tutte le stanze
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canRooms && editRooms && (
+        <div className="modal-backdrop call-panel-backdrop" onClick={() => !boBusy && setEditRooms(false)}>
+          <div className="card modal call-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="topbar">
+              <h2 className="title">{bo?.rooms.length ? "Modifica le stanze" : "Dividi in stanze"}</h2>
+              <button className="call-close" onClick={() => setEditRooms(false)} aria-label="Chiudi" disabled={boBusy}>
+                ✕
+              </button>
+            </div>
+            <BreakoutEditor
+              people={roomPeople}
+              rooms={bo?.rooms ?? []}
+              assign={bo?.assign ?? {}}
+              busy={boBusy}
+              error={boError}
+              onSave={saveRooms}
+              onCloseRooms={bo?.rooms.length ? closeRooms : undefined}
+              onCancel={() => setEditRooms(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {host && panel && (
         <div className="modal-backdrop call-panel-backdrop" onClick={() => setPanel(false)}>
           <div className="card modal call-panel" onClick={(e) => e.stopPropagation()}>
@@ -1451,7 +1692,7 @@ export default function VideoRoom({
               <div className="row call-panel-head">
                 <h3>Nella chiamata ({participants.length})</h3>
                 {participants.some((p) => !p.isLocal && !isHost(p) && p.isMicrophoneEnabled) && (
-                  <button className="btn btn-ghost btn-small" onClick={() => host.act("mute_all")}>
+                  <button className="btn btn-ghost btn-small" onClick={() => host.act("mute_all", undefined, undefined, here)}>
                     🔇 Silenzia tutti
                   </button>
                 )}
@@ -1474,7 +1715,7 @@ export default function VideoRoom({
                           {isCohost(p) ? "Togli co-org." : "Co-org."}
                         </button>
                         {p.isMicrophoneEnabled && mic?.trackSid && (
-                          <button className="btn btn-ghost btn-small" onClick={() => host.act("mute", p.identity, mic.trackSid)}>
+                          <button className="btn btn-ghost btn-small" onClick={() => host.act("mute", p.identity, mic.trackSid, here)}>
                             Silenzia
                           </button>
                         )}

@@ -6,13 +6,21 @@ import AccessToggle from "./AccessToggle";
 import ScheduledCalls from "./ScheduledCalls";
 import ListenToggle from "./ListenToggle";
 import type { HostCall } from "@/lib/useHostCall";
-import { callSlug } from "@/lib/video-types";
+import { callSlug, type BreakoutRoom } from "@/lib/video-types";
+import { fetchRoomTicket } from "@/lib/breakout-client";
 import { ENTER_WITH } from "@/lib/video-config";
 
 // Scheda Video dell'organizzatore: avvia la videochiamata, condivide il link, decide chi entra
 export default function VideoCallAdmin({ host }: { host: HostCall }) {
   const { loaded, configured, call, requests, pending, error, busy } = host;
-  const [room, setRoom] = useState<{ url: string; token: string } | null>(null);
+  // breakout: stanza in cui si è (null = plenaria); initial e notice servono quando ci si sposta tra le stanze
+  const [room, setRoom] = useState<{
+    url: string;
+    token: string;
+    breakout?: BreakoutRoom | null;
+    initial?: { camera: boolean; mic: boolean };
+    notice?: string;
+  } | null>(null);
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -52,6 +60,18 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
     if (!confirm("Terminare la videochiamata per tutti? Il link smetterà di funzionare.")) return;
     await host.end();
   }
+
+  // Spostamento tra plenaria e stanze: nuovo gettone, la stanza si ricollega
+  const code = call?.code;
+  const switchRoom = useCallback(
+    async (roomId: string | null, media: { camera: boolean; mic: boolean }, notice?: string) => {
+      if (!code) return "Nessuna videochiamata in corso";
+      const t = await fetchRoomTicket(code, roomId);
+      if ("error" in t) return t.error;
+      setRoom({ url: t.url, token: t.token, breakout: t.room, initial: media, notice });
+    },
+    [code]
+  );
 
   const onLeave = useCallback(
     (reason: LeaveReason, detail?: string) => {
@@ -209,7 +229,20 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
       )}
 
       {room && (
-        <VideoRoom key={room.token} url={room.url} token={room.token} host={host} link={link} title={call?.title ?? ""} onLeave={onLeave} />
+        <VideoRoom
+          key={room.token}
+          url={room.url}
+          token={room.token}
+          initial={room.initial}
+          host={host}
+          link={link}
+          title={call?.title ?? ""}
+          onLeave={onLeave}
+          code={code}
+          breakout={room.breakout ?? null}
+          onSwitchRoom={switchRoom}
+          initialNotice={room.notice}
+        />
       )}
     </div>
   );

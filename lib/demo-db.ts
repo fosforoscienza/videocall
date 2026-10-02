@@ -14,7 +14,10 @@ export const isDemo = () => !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.en
 
 // Credenziali di prova (valgono solo in modalità demo)
 export const DEMO_ORGANIZER = { name: "demo", password: "demo" };
-export const DEMO_MEMBER = { username: "mario.rossi", code: "1234", name: "Mario Rossi" };
+export const DEMO_MEMBERS = [
+  { username: "mario.rossi", code: "1234", name: "Mario Rossi" },
+  { username: "giulia.bianchi", code: "5678", name: "Giulia Bianchi" },
+];
 
 type Row = Record<string, unknown>;
 type Tables = Record<string, Row[]>;
@@ -46,7 +49,7 @@ function tables(): Tables {
       app_settings: [],
       video_calls: [],
       video_call_requests: [],
-      video_members: [{ ...DEFAULTS.video_members(), ...DEMO_MEMBER }],
+      video_members: DEMO_MEMBERS.map((m) => ({ ...DEFAULTS.video_members(), ...m })),
     };
   }
   return store.__videoDemoDb;

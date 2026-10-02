@@ -37,7 +37,7 @@ Per provare l'app o lavorare sulla grafica non serve Supabase: se mancano `NEXT_
 `SUPABASE_SERVICE_ROLE_KEY` l'app usa un database finto tenuto in memoria ([`lib/demo-db.ts`](lib/demo-db.ts)).
 
 - Organizzatore: **demo** / **demo** (se `VIDEO_ORGANIZERS` è vuota). `SESSION_SECRET` non serve.
-- Partecipante di prova: **mario.rossi** / **1234**.
+- Partecipanti di prova: **mario.rossi** / **1234** e **giulia.bianchi** / **5678**.
 - Si possono avviare e programmare chiamate, usare la sala d'attesa e le impostazioni anche senza LiveKit;
   per entrare nella stanza con audio e video servono comunque `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`.
 - I dati si azzerano quando il server riparte. Appena aggiungi le variabili Supabase la modalità demo si spegne da sola.

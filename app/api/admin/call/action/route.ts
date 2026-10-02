@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });
   }
 
+  // Stanza in cui si trova chi silenzia (vuoto = plenaria)
+  const breakout = typeof body.room === "string" && /^[a-z0-9]{1,12}$/.test(body.room) ? body.room : null;
+
   const { call, error } = await activeCall();
   if (error) return NextResponse.json({ error }, { status: 500 });
   if (!call) return NextResponse.json({ error: "Nessuna videochiamata in corso" }, { status: 404 });
@@ -33,12 +36,12 @@ export async function POST(req: Request) {
   } else if (action === "make_cohost" || action === "remove_cohost") {
     result = await setCohost(call.id, identity, action === "make_cohost");
   } else if (action === "mute_all") {
-    await muteAllInRoom(call.id);
+    await muteAllInRoom(call.id, breakout);
   } else if (action === "mute") {
     if (typeof body.trackSid !== "string" || !body.trackSid) {
       return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });
     }
-    await muteInRoom(call.id, identity, body.trackSid);
+    await muteInRoom(call.id, identity, body.trackSid, breakout);
   }
   if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
   return NextResponse.json({ ok: true });

@@ -27,6 +27,23 @@ export type JoinState =
   | { status: "scheduled"; startsAt: string | null; name?: string }
   | { status: "accepted"; name: string; host: boolean; listenOnly: boolean; url: string; token: string };
 
+// ---------- stanze (divisione in gruppi) ----------
+// L'organizzatore divide la chiamata in stanze: ogni stanza è una videochiamata a parte, la plenaria resta aperta.
+// Ogni partecipante è assegnato al massimo a una stanza; organizzatori e co-organizzatori entrano dove vogliono.
+export type BreakoutRoom = { id: string; name: string };
+export type Breakouts = { rooms: BreakoutRoom[]; assign: Record<string, string> };
+// Risposta di /api/call/[code]/breakout. assign e presence solo per chi gestisce la chiamata
+// (presence: chi è collegato in ogni stanza, "main" = plenaria)
+export type BreakoutState = {
+  rooms: BreakoutRoom[];
+  mine: string | null;
+  assign?: Record<string, string>;
+  presence?: Record<string, string[]>;
+};
+export const BREAKOUT_TOPIC = "breakout";
+export const MAX_BREAKOUTS = 20;
+export const MAX_BREAKOUT_NAME = 40;
+
 export type HostAction = "accept" | "reject" | "remove" | "mute" | "mute_all" | "accept_all" | "make_cohost" | "remove_cohost";
 
 // Link della videochiamata: /call/nome-della-chiamata-codice. Il nome serve solo a renderlo leggibile;

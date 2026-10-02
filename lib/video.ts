@@ -1,10 +1,20 @@
 import "server-only";
 import { randomBytes } from "crypto";
-import { AccessToken, RoomServiceClient, TrackSource } from "livekit-server-sdk";
+import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 import { isDemo } from "./demo-db";
 import { supabaseAdmin } from "./supabase-admin";
 import { currentUser, type VideoUser } from "./video-auth";
-import { isLive, type CallInfo, type CallRequest, type CallStatus } from "./video-types";
+import {
+  BREAKOUT_TOPIC,
+  isLive,
+  MAX_BREAKOUT_NAME,
+  MAX_BREAKOUTS,
+  type BreakoutRoom,
+  type Breakouts,
+  type CallInfo,
+  type CallRequest,
+  type CallStatus,
+} from "./video-types";
 
 // Videochiamate: audio e video passano da LiveKit (server esterno), mentre chi può entrare
 // lo decide questo server: il gettone per collegarsi viene dato solo a chi l'organizzatore ha ammesso.
@@ -59,7 +69,13 @@ export function videoConfigured() {
   return config() !== null || isDemo();
 }
 
-const roomName = (callId: string) => `vc-${callId}`;
+// Stanza LiveKit della plenaria o di una delle stanze in cui è divisa la chiamata
+const roomName = (callId: string, breakoutId?: string | null) => (breakoutId ? `vc-${callId}-${breakoutId}` : `vc-${callId}`);
+// Plenaria e tutte le stanze aperte (per togliere qualcuno o cambiargli i poteri ovunque si trovi)
+async function allRoomNames(callId: string) {
+  const { rooms } = await getBreakouts(callId);
+  return [roomName(callId), ...rooms.map((r) => roomName(callId, r.id))];
+}
 
 function rooms() {
   const c = config();
@@ -69,7 +85,7 @@ function rooms() {
 
 // Gettone LiveKit per entrare nella stanza. Dura poco: serve solo al momento del collegamento
 // (chi viene rimosso non può riusarlo per rientrare più tardi).
-export async function callToken(callId: string, who: Participant) {
+export async function callToken(callId: string, who: Participant, breakoutId: string | null = null) {
   const c = config();
   if (!c) return null;
   const at = new AccessToken(c.key, c.secret, {
@@ -79,31 +95,35 @@ export async function callToken(callId: string, who: Participant) {
     metadata: JSON.stringify({ host: who.host, cohost: !!who.cohost }),
   });
   at.addGrant({
-    room: roomName(callId),
+    room: roomName(callId, breakoutId),
     roomJoin: true,
     // Canale dati: chat per tutti; i disegni sullo schermo condiviso si accettano solo dagli organizzatori
-    ...(who.host ? { canPublish: true, canSubscribe: true, canPublishData: true } : await guestPermission(callId)),
+    ...(who.host ? { canPublish: true, canSubscribe: true, canPublishData: true } : await guestPermission(callId, breakoutId)),
   });
   return { url: c.url, token: await at.toJwt() };
 }
 
+// Toglie qualcuno dalla chiamata: dalla plenaria e da qualunque stanza
 export async function removeFromRoom(callId: string, identity: string) {
-  await rooms()
-    ?.removeParticipant(roomName(callId), identity)
-    .catch(() => {});
-}
-
-export async function muteInRoom(callId: string, identity: string, trackSid: string) {
-  await rooms()
-    ?.mutePublishedTrack(roomName(callId), identity, trackSid, true)
-    .catch(() => {});
-}
-
-// Spegne il microfono a tutti tranne agli organizzatori
-export async function muteAllInRoom(callId: string) {
   const svc = rooms();
   if (!svc) return;
-  const people = await svc.listParticipants(roomName(callId)).catch(() => []);
+  const names = await allRoomNames(callId);
+  await Promise.all(names.map((n) => svc.removeParticipant(n, identity).catch(() => {})));
+}
+
+// breakoutId: stanza in cui si trova chi silenzia (vuoto = plenaria)
+export async function muteInRoom(callId: string, identity: string, trackSid: string, breakoutId: string | null = null) {
+  await rooms()
+    ?.mutePublishedTrack(roomName(callId, breakoutId), identity, trackSid, true)
+    .catch(() => {});
+}
+
+// Spegne il microfono a tutti tranne agli organizzatori (nella plenaria o nella stanza indicata)
+export async function muteAllInRoom(callId: string, breakoutId: string | null = null) {
+  const svc = rooms();
+  if (!svc) return;
+  const name = roomName(callId, breakoutId);
+  const people = await svc.listParticipants(name).catch(() => []);
   await Promise.all(
     people.flatMap((p) => {
       let host = false;
@@ -115,7 +135,7 @@ export async function muteAllInRoom(callId: string) {
       if (host) return [];
       return p.tracks
         .filter((t) => t.source === TrackSource.MICROPHONE && !t.muted)
-        .map((t) => svc.mutePublishedTrack(roomName(callId), p.identity, t.sid, true).catch(() => {}));
+        .map((t) => svc.mutePublishedTrack(name, p.identity, t.sid, true).catch(() => {}));
     })
   );
 }
@@ -123,8 +143,9 @@ export async function muteAllInRoom(callId: string) {
 // Cosa possono fare i partecipanti che non sono organizzatori. Lo schermo lo condivide l'organizzatore;
 // gli altri solo se l'organizzatore l'ha permesso a tutti. In "solo ascolto" non pubblicano niente
 // (né microfono né videocamera né schermo): guardano, ascoltano e scrivono in chat.
-async function guestPermission(callId: string) {
-  const [listen, shareAll] = await Promise.all([isListenOnly(callId), isShareAll()]);
+// Nelle stanze si lavora in piccoli gruppi: si può sempre parlare, anche se la plenaria è in solo ascolto.
+async function guestPermission(callId: string, breakoutId: string | null = null) {
+  const [listen, shareAll] = await Promise.all([breakoutId ? false : isListenOnly(callId), isShareAll()]);
   if (listen) return { canPublish: false, canSubscribe: true, canPublishData: true, canPublishSources: [] };
   const sources = shareAll
     ? [TrackSource.CAMERA, TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO]
@@ -137,16 +158,22 @@ async function guestPermission(callId: string) {
 export async function applyGuestPermissionsInRoom(callId: string) {
   const svc = rooms();
   if (!svc) return;
-  const [people, permission] = await Promise.all([
-    svc.listParticipants(roomName(callId)).catch(() => []),
-    guestPermission(callId),
-  ]);
+  const { rooms: open } = await getBreakouts(callId);
+  const targets: (string | null)[] = [null, ...open.map((r) => r.id)];
   await Promise.all(
-    people.map((p) =>
-      readMeta(p.metadata).host
-        ? null
-        : svc.updateParticipant(roomName(callId), p.identity, { permission }).catch(() => {})
-    )
+    targets.map(async (b) => {
+      const [people, permission] = await Promise.all([
+        svc.listParticipants(roomName(callId, b)).catch(() => []),
+        guestPermission(callId, b),
+      ]);
+      await Promise.all(
+        people.map((p) =>
+          readMeta(p.metadata).host
+            ? null
+            : svc.updateParticipant(roomName(callId, b), p.identity, { permission }).catch(() => {})
+        )
+      );
+    })
   );
 }
 
@@ -359,9 +386,12 @@ export async function endCall(callId: string) {
     .from("video_calls")
     .update({ ended_at: new Date().toISOString() })
     .eq("id", callId);
-  await rooms()
-    ?.deleteRoom(roomName(callId))
-    .catch(() => {});
+  const svc = rooms();
+  if (svc) {
+    const names = await allRoomNames(callId);
+    await Promise.all(names.map((n) => svc.deleteRoom(n).catch(() => {})));
+  }
+  await saveBreakouts(callId, { rooms: [], assign: {} });
   return { error: error ? DB_UPDATE_NEEDED : undefined };
 }
 
@@ -477,12 +507,18 @@ async function applyRole(callId: string, identity: string, role: HostRole | null
   const permission = role
     ? { canPublish: true, canSubscribe: true, canPublishData: true, canPublishSources: ALL_SOURCES }
     : await guestPermission(callId);
-  await svc
-    .updateParticipant(roomName(callId), identity, {
-      metadata: JSON.stringify({ host: !!role, cohost: role === "cohost" }),
-      permission,
-    })
-    .catch(() => {});
+  const metadata = JSON.stringify({ host: !!role, cohost: role === "cohost" });
+  const { rooms: open } = await getBreakouts(callId);
+  await Promise.all(
+    [null, ...open.map((r) => r.id)].map(async (b) =>
+      svc
+        .updateParticipant(roomName(callId, b), identity, {
+          metadata,
+          permission: role ? permission : await guestPermission(callId, b),
+        })
+        .catch(() => {})
+    )
+  );
 }
 
 export async function setCohost(callId: string, identity: string, on: boolean) {
@@ -503,6 +539,12 @@ export async function claimHost(callId: string, identity: string): Promise<{ ok:
   if (!people || !people.some((p) => p.identity === identity)) return { ok: false };
   const others = people.filter((p) => p.identity !== identity).map((p) => ({ p, m: readMeta(p.metadata) }));
   if (others.some(({ m }) => m.host && !m.cohost)) return { ok: false }; // l'organizzatore c'è ancora
+  // ...o è solo passato in una delle stanze
+  const { rooms: open } = await getBreakouts(callId);
+  for (const r of open) {
+    const there = await svc.listParticipants(roomName(callId, r.id)).catch(() => []);
+    if (there.some((p) => readMeta(p.metadata).host && !readMeta(p.metadata).cohost)) return { ok: false };
+  }
   const hosts = await getHosts(callId);
   if (hosts[identity] !== "cohost") {
     // Senza co-organizzatore tocca a chi è entrato per primo
@@ -528,4 +570,81 @@ export async function requireCallHost(): Promise<{ admin: boolean; name: string 
   const { call } = await activeCall();
   if (!call) return null;
   return (await hostRole(call.id, who.identity)) ? { admin: false, name: who.name } : null;
+}
+
+// ---------- stanze (divisione in gruppi) ----------
+// Stanze, nomi e assegnazioni sono salvati in app_settings, per chiamata: { rooms: [{id, name}], assign: {identity: id} }
+
+const breakoutKey = (callId: string) => `video_breakouts:${callId}`;
+const BREAKOUT_ID = /^[a-z0-9]{1,12}$/;
+
+export async function getBreakouts(callId: string): Promise<Breakouts> {
+  const { data } = await supabaseAdmin().from("app_settings").select("value").eq("key", breakoutKey(callId)).maybeSingle();
+  return cleanBreakouts(data ? safeJson(data.value) : null) ?? { rooms: [], assign: {} };
+}
+
+function safeJson(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
+// Controlla quello che arriva dal browser: al massimo MAX_BREAKOUTS stanze con un nome, ogni persona in una stanza sola
+export function cleanBreakouts(raw: unknown): Breakouts | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as { rooms?: unknown; assign?: unknown };
+  if (!Array.isArray(r.rooms)) return null;
+  const rooms: BreakoutRoom[] = [];
+  for (const [i, room] of r.rooms.slice(0, MAX_BREAKOUTS).entries()) {
+    const x = room as { id?: unknown; name?: unknown };
+    const id = typeof x.id === "string" && BREAKOUT_ID.test(x.id) && !rooms.some((o) => o.id === x.id) ? x.id : newBreakoutId();
+    const name = cleanTitle(x.name).slice(0, MAX_BREAKOUT_NAME) || `Stanza ${i + 1}`;
+    rooms.push({ id, name });
+  }
+  const assign: Record<string, string> = {};
+  if (r.assign && typeof r.assign === "object") {
+    for (const [identity, id] of Object.entries(r.assign as Record<string, unknown>)) {
+      if (typeof id === "string" && identity.length <= 200 && rooms.some((o) => o.id === id)) assign[identity] = id;
+    }
+  }
+  return { rooms, assign };
+}
+
+function newBreakoutId() {
+  return Array.from(randomBytes(8), (b) => CODE_CHARS[b % CODE_CHARS.length]).join("");
+}
+
+export async function saveBreakouts(callId: string, b: Breakouts) {
+  const { error } = await supabaseAdmin()
+    .from("app_settings")
+    .upsert({ key: breakoutKey(callId), value: JSON.stringify(b), updated_at: new Date().toISOString() });
+  return { error: error ? DB_UPDATE_NEEDED : undefined };
+}
+
+// Avvisa chi è collegato (in plenaria e nelle stanze, anche quelle appena chiuse) che le stanze sono cambiate:
+// ognuno rilegge la sua assegnazione e, se serve, si sposta da solo
+export async function notifyBreakouts(callId: string, roomIds: string[]) {
+  const svc = rooms();
+  if (!svc) return;
+  const data = new TextEncoder().encode(JSON.stringify({ changed: Date.now() }));
+  const names = new Set([roomName(callId), ...roomIds.map((id) => roomName(callId, id))]);
+  await Promise.all(
+    [...names].map((n) => svc.sendData(n, data, DataPacket_Kind.RELIABLE, { topic: BREAKOUT_TOPIC }).catch(() => {}))
+  );
+}
+
+// Chi è collegato in plenaria ("main") e in ogni stanza (per il pannello dell'organizzatore)
+export async function breakoutPresence(callId: string, open: BreakoutRoom[]): Promise<Record<string, string[]>> {
+  const svc = rooms();
+  if (!svc) return {};
+  const targets: [string, string][] = [["main", roomName(callId)], ...open.map((r): [string, string] => [r.id, roomName(callId, r.id)])];
+  const lists = await Promise.all(targets.map(([, n]) => svc.listParticipants(n).catch(() => [])));
+  return Object.fromEntries(targets.map(([key], i) => [key, lists[i].map((p) => p.identity)]));
+}
+
+// Chi può gestire questa chiamata: organizzatori e co-organizzatori/organizzatori nominati
+export async function isCallHost(callId: string, who: Participant) {
+  return who.host || (await hostRole(callId, who.identity)) !== null;
 }

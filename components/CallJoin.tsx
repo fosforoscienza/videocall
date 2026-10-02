@@ -6,7 +6,8 @@ import Icon from "./Icons";
 import VideoRoom, { type LeaveReason } from "./VideoRoom";
 import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoice, type DeviceKind } from "./DeviceSettings";
 import { useHostCall } from "@/lib/useHostCall";
-import { formatWhen, type JoinState } from "@/lib/video-types";
+import { formatWhen, type BreakoutRoom, type JoinState } from "@/lib/video-types";
+import { fetchRoomTicket } from "@/lib/breakout-client";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 
 const NAME_ONLY = VIDEO_CONFIG.guestLogin === "name";
@@ -15,7 +16,17 @@ type Phase =
   | { kind: "form" }
   | { kind: "scheduled"; startsAt: string | null }
   | { kind: "waiting" }
-  | { kind: "room"; url: string; token: string; host: boolean; listenOnly: boolean }
+  | {
+      kind: "room";
+      url: string;
+      token: string;
+      host: boolean;
+      listenOnly: boolean;
+      // stanza in cui si è (null = plenaria); media e notice dopo uno spostamento tra le stanze
+      breakout?: BreakoutRoom | null;
+      media?: { camera: boolean; mic: boolean };
+      notice?: string;
+    }
   | { kind: "rejected" | "removed" | "ended" | "left" | "duplicate" | "error" };
 
 const MESSAGES: Record<"rejected" | "removed" | "ended" | "left" | "duplicate" | "error", { icon: string; title: string; text: string; retry?: string }> = {
@@ -255,6 +266,16 @@ export default function CallJoin({
     await fetch(`/api/call/${code}`, { method: "DELETE" }).catch(() => {});
   };
 
+  // Spostamento tra plenaria e stanze: nuovo gettone, la stanza si ricollega
+  const switchRoom = useCallback(
+    async (roomId: string | null, media: { camera: boolean; mic: boolean }, notice?: string) => {
+      const t = await fetchRoomTicket(code, roomId);
+      if ("error" in t) return t.error;
+      setPhase({ kind: "room", url: t.url, token: t.token, host: t.host, listenOnly: t.listenOnly, breakout: t.room, media, notice });
+    },
+    [code]
+  );
+
   const [leaveDetail, setLeaveDetail] = useState("");
   const onLeave = useCallback((reason: LeaveReason, detail?: string) => {
     setLeaveDetail(detail ?? "");
@@ -267,13 +288,21 @@ export default function CallJoin({
         key={phase.token}
         url={phase.url}
         token={phase.token}
-        initial={{ camera: camOn && !phase.listenOnly, mic: micOn && !phase.listenOnly, devices }}
+        initial={{
+          camera: (phase.media ? phase.media.camera : camOn) && !phase.listenOnly,
+          mic: (phase.media ? phase.media.mic : micOn) && !phase.listenOnly,
+          devices,
+        }}
         host={isHost ? host : undefined}
         link={isHost ? window.location.href : undefined}
         title={(isHost ? host.call?.title : null) ?? title}
-        claimUrl={`/api/call/${code}/claim`}
+        claimUrl={phase.breakout ? undefined : `/api/call/${code}/claim`}
         onHostChange={(h) => setPhase((ph) => (ph.kind === "room" ? { ...ph, host: h } : ph))}
         onLeave={onLeave}
+        code={code}
+        breakout={phase.breakout ?? null}
+        onSwitchRoom={switchRoom}
+        initialNotice={phase.notice}
       />
     );
   }

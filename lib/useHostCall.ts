@@ -23,7 +23,8 @@ export type HostCall = {
   start: (title?: string, listenOnly?: boolean) => Promise<void>;
   rename: (title: string) => Promise<void>;
   end: () => Promise<void>;
-  act: (action: HostAction, identity?: string, trackSid?: string) => Promise<void>;
+  // room: stanza in cui si trova chi agisce (per silenziare lì), vuoto = plenaria
+  act: (action: HostAction, identity?: string, trackSid?: string, room?: string | null) => Promise<void>;
   setOpenAccess: (on: boolean) => Promise<void>;
   setShareAll: (on: boolean) => Promise<void>;
   setListenOnly: (on: boolean) => Promise<void>;
@@ -141,7 +142,7 @@ export function useHostCall(enabled = true): HostCall {
   );
 
   const act = useCallback(
-    async (action: HostAction, identity?: string, trackSid?: string) => {
+    async (action: HostAction, identity?: string, trackSid?: string, room?: string | null) => {
       // Aggiorna subito la lista, senza aspettare il server
       if (action === "accept_all") setRequests((rs) => rs.map((r) => (r.status === "pending" ? { ...r, status: "accepted" } : r)));
       else if (action === "accept" || action === "reject" || action === "remove") {
@@ -151,7 +152,7 @@ export function useHostCall(enabled = true): HostCall {
       await send("/api/admin/call/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, identity, trackSid }),
+        body: JSON.stringify({ action, identity, trackSid, room: room ?? undefined }),
       });
     },
     [send]

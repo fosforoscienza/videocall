@@ -1782,3 +1782,133 @@ video.mirror {
   font-size: 0.78rem;
 }
 
+
+/* ---------- stanze (divisione in gruppi) ---------- */
+/* fascia in alto: in che stanza sono e come spostarmi */
+.call-roombar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 8px 8px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgb(0 174 239 / 0.2), rgb(255 255 255 / 0.05) 70%);
+  border: 1px solid rgb(0 174 239 / 0.4);
+  box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.5);
+}
+.call-roombar-text {
+  min-width: 0;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+.call-roombar-text strong {
+  color: var(--accent);
+}
+.call-roombar .row {
+  gap: 6px;
+}
+
+/* pannello "Stanze" dell'organizzatore */
+.call-rooms-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgb(var(--fg-rgb) / 0.12);
+}
+.call-rooms-item h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--title);
+  overflow-wrap: anywhere;
+}
+.call-here {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* "Dividi in stanze" */
+.call-breakout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.call-breakout-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.field-label {
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mute);
+}
+.call-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgb(var(--deep-rgb) / 0.7);
+  border: 1px solid rgb(var(--fg-rgb) / 0.15);
+}
+.call-stepper button {
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid rgb(var(--fg-rgb) / 0.25);
+  border-radius: 10px;
+  background: rgb(var(--fg-rgb) / 0.06);
+  color: var(--fg);
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.call-stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.call-stepper strong {
+  min-width: 34px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+.call-breakout-tools {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.call-breakout-room {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgb(var(--fg-rgb) / 0.05);
+  border: 1px solid rgb(var(--fg-rgb) / 0.12);
+}
+.call-breakout-room .field {
+  margin-bottom: 4px;
+}
+.call-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.call-check input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.call-check small {
+  font-size: 0.78rem;
+}
