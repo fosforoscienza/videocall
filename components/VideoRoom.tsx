@@ -24,6 +24,7 @@ import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoi
 import { playSound } from "@/lib/sounds";
 import { applyBoard, BOARD_TOPIC, COLORS, syncMessages, type BoardMsg, type Stroke, type Tool } from "@/lib/board";
 import { ENTER_WITH, VIDEO_CONFIG } from "@/lib/video-config";
+import Icon from "./Icons";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -775,8 +776,8 @@ export default function VideoRoom({
     pipHintRef.current = () => {
       const lp = room?.localParticipant;
       const usingMedia = !!lp && (!!lp.getTrackPublication(Track.Source.Microphone)?.track || lp.isCameraEnabled);
-      if (listening) return "🗗 In solo ascolto la finestrella non si apre da sola (Chrome lo fa solo per chi usa microfono o fotocamera): premi 🗗 Mini prima di cambiare scheda.";
-      if (!usingMedia) return "🗗 La finestrella si apre da sola solo con microfono o fotocamera collegati: premi 🗗 Mini prima di cambiare scheda.";
+      if (listening) return "🗗 In solo ascolto la finestrella non si apre da sola (Chrome lo fa solo per chi usa microfono o fotocamera): premi il pulsante della finestrella prima di cambiare scheda.";
+      if (!usingMedia) return "🗗 La finestrella si apre da sola solo con microfono o fotocamera collegati: premi il pulsante della finestrella prima di cambiare scheda.";
       return "🗗 La finestrella non si è aperta da sola? Si apre cambiando scheda (non riducendo la finestra a icona). Se ancora non va: icona a sinistra dell'indirizzo → Impostazioni sito → \"Picture in picture automatico\" → Consenti.";
     };
   });
@@ -1138,73 +1139,61 @@ export default function VideoRoom({
         <div className="call-controls">
           {!listening && (
             <>
-              <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} disabled={!connected} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"}>
-                <span>{micOn ? "🎙️" : "🔇"}</span>
-                <small>{micOn ? "Micro" : "Muto"}</small>
+              <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} disabled={!connected} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"} title={micOn ? "Spegni microfono" : "Accendi microfono"}>
+                <Icon name={micOn ? "mic" : "mic-off"} />
               </button>
-              <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} disabled={!connected} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
-                <span>{camOn ? "📹" : "🚫"}</span>
-                <small>Video</small>
+              <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} disabled={!connected} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"} title={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
+                <Icon name={camOn ? "cam" : "cam-off"} />
               </button>
             </>
           )}
           {!useMore && !listening && canFlip && camOn && (
-            <button className="call-btn" onClick={flip} aria-label="Cambia fotocamera">
-              <span>🔄</span>
-              <small>Gira</small>
+            <button className="call-btn" onClick={flip} aria-label="Cambia fotocamera" title="Cambia fotocamera">
+              <Icon name="flip" />
             </button>
           )}
           {!useMore && canShareScreen && (
-            <button className={`call-btn ${sharing ? "active" : ""}`} onClick={toggleScreen} disabled={!connected} aria-label={sharing ? "Smetti di condividere lo schermo" : "Condividi lo schermo"}>
-              <span>🖥️</span>
-              <small>{sharing ? "Stop" : "Schermo"}</small>
+            <button className={`call-btn ${sharing ? "active" : ""}`} onClick={toggleScreen} disabled={!connected} aria-label={sharing ? "Smetti di condividere lo schermo" : "Condividi lo schermo"} title={sharing ? "Smetti di condividere lo schermo" : "Condividi lo schermo"}>
+              <Icon name="share" />
             </button>
           )}
           {!useMore && host && screen && (
-            <button className={`call-btn ${drawing ? "active" : ""}`} onClick={() => setDrawing(!drawing)} aria-label={drawing ? "Smetti di disegnare" : "Disegna sullo schermo"}>
-              <span>✏️</span>
-              <small>Disegna</small>
+            <button className={`call-btn ${drawing ? "active" : ""}`} onClick={() => setDrawing(!drawing)} aria-label={drawing ? "Smetti di disegnare" : "Disegna sullo schermo"} title={drawing ? "Smetti di disegnare" : "Disegna sullo schermo"}>
+              <Icon name="pen" />
             </button>
           )}
           {!useMore && (
-            <button className={`call-btn ${devicesOpen ? "active" : ""}`} onClick={() => setDevicesOpen(true)} aria-label="Opzioni">
-              <span>⚙️</span>
-              <small>Opzioni</small>
+            <button className={`call-btn ${devicesOpen ? "active" : ""}`} onClick={() => setDevicesOpen(true)} aria-label="Opzioni" title="Opzioni">
+              <Icon name="settings" />
             </button>
           )}
           {!useMore && canPip && (
-            <button className={`call-btn ${pipWin ? "active" : ""}`} onClick={() => (pipWin ? pipWin.close() : openPip(false))} disabled={!connected} aria-label="Finestrella">
-              <span>🗗</span>
-              <small>Mini</small>
+            <button className={`call-btn ${pipWin ? "active" : ""}`} onClick={() => (pipWin ? pipWin.close() : openPip(false))} disabled={!connected} aria-label="Finestrella" title="Finestrella">
+              <Icon name="pip" />
             </button>
           )}
-          <button className={`call-btn ${chatOpen ? "active" : ""}`} onClick={toggleChat} disabled={!connected} aria-label={chatOpen ? "Chiudi la chat" : "Apri la chat"}>
-            <span>💬</span>
-            <small>Chat</small>
+          <button className={`call-btn ${chatOpen ? "active" : ""}`} onClick={toggleChat} disabled={!connected} aria-label={chatOpen ? "Chiudi la chat" : "Apri la chat"} title={chatOpen ? "Chiudi la chat" : "Apri la chat"}>
+            <Icon name="chat" />
             {unread > 0 && <b className="call-badge">{unread}</b>}
           </button>
           {!useMore && (
-            <button className={`call-btn ${viewMenu ? "active" : ""}`} onClick={() => setViewMenu(!viewMenu)} aria-label="Disposizione">
-              <span>🔲</span>
-              <small>Vista</small>
+            <button className={`call-btn ${viewMenu ? "active" : ""}`} onClick={() => setViewMenu(!viewMenu)} aria-label="Disposizione" title="Disposizione">
+              <Icon name="layout" />
             </button>
           )}
           {host && (
-            <button className="call-btn" onClick={() => setPanel(true)} aria-label="Persone">
-              <span>👥</span>
-              <small>Persone</small>
+            <button className="call-btn" onClick={() => setPanel(true)} aria-label="Persone" title="Persone">
+              <Icon name="people" />
               {pending.length > 0 && <b className="call-badge">{pending.length}</b>}
             </button>
           )}
           {useMore && (
-            <button className={`call-btn ${moreOpen ? "active" : ""}`} onClick={() => setMoreOpen(true)} aria-label="Altri comandi">
-              <span>⋯</span>
-              <small>Altro</small>
+            <button className={`call-btn ${moreOpen ? "active" : ""}`} onClick={() => setMoreOpen(true)} aria-label="Altri comandi" title="Altri comandi">
+              <Icon name="more" />
             </button>
           )}
-          <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata">
-            <span>📞</span>
-            <small>Esci</small>
+          <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata" title="Esci dalla videochiamata">
+            <Icon name="leave" />
           </button>
         </div>
         <div className="call-bar-side">{title && <span className="call-title">{title}</span>}</div>
@@ -1254,7 +1243,7 @@ export default function VideoRoom({
             )}
             {!("documentPictureInPicture" in window) && canPip && (
               <p className="muted call-sheet-label">
-                🗗 Su questo browser (Safari, iPhone, iPad) la finestrella non si apre da sola: premi 🗗 Mini prima di cambiare scheda o app.
+                🗗 Su questo browser (Safari, iPhone, iPad) la finestrella non si apre da sola: premi il pulsante della finestrella prima di cambiare scheda o app.
               </p>
             )}
           </div>
@@ -1289,18 +1278,18 @@ export default function VideoRoom({
             <div className="pip-controls">
               {!listening && (
                 <>
-                  <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"}>
-                    <span>{micOn ? "🎙️" : "🔇"}</span>
+                  <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"} title={micOn ? "Spegni microfono" : "Accendi microfono"}>
+                    <Icon name={micOn ? "mic" : "mic-off"} />
                   </button>
-                  <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
-                    <span>{camOn ? "📹" : "🚫"}</span>
+                  <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"} title={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
+                    <Icon name={camOn ? "cam" : "cam-off"} />
                   </button>
                 </>
               )}
               {unread > 0 && <span className="pip-unread">💬 {unread}</span>}
               {host && pending.length > 0 && <span className="pip-unread">🚪 {pending.length}</span>}
-              <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata">
-                <span>📞</span>
+              <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata" title="Esci dalla videochiamata">
+                <Icon name="leave" />
               </button>
             </div>
           </div>,

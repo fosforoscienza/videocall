@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createLocalTracks, Track, VideoPresets, type LocalTrack } from "livekit-client";
+import Icon from "./Icons";
 import VideoRoom, { type LeaveReason } from "./VideoRoom";
 import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoice, type DeviceKind } from "./DeviceSettings";
 import { useHostCall } from "@/lib/useHostCall";
@@ -401,11 +402,11 @@ export default function CallJoin({
                 <video ref={preview} className="mirror" autoPlay playsInline muted style={videoTrack && camOn ? undefined : { display: "none" }} />
                 {!(videoTrack && camOn) && <div className="call-avatar">{name.slice(0, 1).toUpperCase() || "?"}</div>}
                 <div className="call-preview-controls">
-                  <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"}>
-                    <span>{micOn ? "🎙️" : "🔇"}</span>
+                  <button className={`call-btn ${micOn ? "" : "off"}`} onClick={toggleMic} aria-label={micOn ? "Spegni microfono" : "Accendi microfono"} title={micOn ? "Spegni microfono" : "Accendi microfono"}>
+                    <Icon name={micOn ? "mic" : "mic-off"} />
                   </button>
-                  <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
-                    <span>{camOn ? "📹" : "🚫"}</span>
+                  <button className={`call-btn ${camOn ? "" : "off"}`} onClick={toggleCam} aria-label={camOn ? "Spegni fotocamera" : "Accendi fotocamera"} title={camOn ? "Spegni fotocamera" : "Accendi fotocamera"}>
+                    <Icon name={camOn ? "cam" : "cam-off"} />
                   </button>
                 </div>
               </div>
