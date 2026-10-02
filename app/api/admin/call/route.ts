@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { activeCall, cleanTitle, endCall, isOpenAccess, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured } from "@/lib/video";
+import { activeCall, autoEndIfEmpty, cleanTitle, endCall, isOpenAccess, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,9 @@ export async function GET() {
   // Anche i co-organizzatori (partecipanti nominati durante la chiamata) vedono la sala d'attesa
   const host = await requireCallHost();
   if (!host) return unauthorized();
-  const { live: call, scheduled, canSchedule, error } = await openCalls();
+  let { live: call, scheduled, canSchedule, error } = await openCalls();
+  // Rimasta vuota (chi c'era ha chiuso la pagina): termina da sola
+  if (call && (await autoEndIfEmpty(call))) ({ live: call, scheduled, canSchedule, error } = await openCalls());
   if (error) return NextResponse.json({ error }, { status: 500 });
   const requests = call ? await listRequests(call.id) : [];
   return NextResponse.json(

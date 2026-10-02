@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { login, startSession, type VideoUser } from "@/lib/video-auth";
 import { ENTER_WITH } from "@/lib/video-config";
 import {
+  autoEndIfEmpty,
   callByCode,
   callToken,
   currentParticipant,
@@ -35,6 +36,8 @@ export async function GET(_req: Request, { params }: Ctx) {
   const code = codeFromSlug((await params).code);
   const call = await callByCode(code);
   if (!call) return json({ status: "ended" });
+  // Rimasta vuota (chi c'era ha chiuso la pagina): termina da sola
+  if (await autoEndIfEmpty(call)) return json({ status: "ended" });
   const who = await currentParticipant();
   // Programmata e non ancora avviata dall'organizzatore: si aspetta
   if (!isLive(call)) return json({ status: "scheduled", startsAt: call.starts_at ?? null, name: who?.name });

@@ -88,6 +88,8 @@ function rooms() {
 export async function callToken(callId: string, who: Participant, breakoutId: string | null = null) {
   const c = config();
   if (!c) return null;
+  // Da qui la chiamata può chiudersi da sola quando resta vuota (vedi autoEndIfEmpty)
+  await markJoined(callId);
   const at = new AccessToken(c.key, c.secret, {
     identity: who.identity,
     name: who.name,
@@ -647,4 +649,77 @@ export async function breakoutPresence(callId: string, open: BreakoutRoom[]): Pr
 // Chi può gestire questa chiamata: organizzatori e co-organizzatori/organizzatori nominati
 export async function isCallHost(callId: string, who: Participant) {
   return who.host || (await hostRole(callId, who.identity)) !== null;
+}
+
+// ---------- chiusura automatica ----------
+// Quando l'ultima persona esce la chiamata termina da sola (il link smette di funzionare):
+// - subito, se l'ultima persona preme "Esci" (leftCall);
+// - dopo EMPTY_GRACE di stanza vuota, se chi c'era ha chiuso la pagina o perso la connessione
+//   (lo controllano le pagine che chiedono lo stato della chiamata: gestione, link, sala d'attesa).
+// Non scatta finché nessuno è mai entrato (l'organizzatore può avviarla e entrare dopo).
+
+const EMPTY_GRACE = 60 * 1000;
+const CHECK_EVERY = 15 * 1000;
+const joinedKey = (callId: string) => `video_joined:${callId}`;
+const emptyKey = (callId: string) => `video_empty_since:${callId}`;
+const lastCheck = new Map<string, number>();
+
+async function markJoined(callId: string) {
+  await supabaseAdmin()
+    .from("app_settings")
+    .upsert({ key: joinedKey(callId), value: "1", updated_at: new Date().toISOString() });
+}
+
+// Identità collegate in plenaria e in tutte le stanze (null se LiveKit non risponde: meglio non chiudere)
+async function connectedIdentities(callId: string): Promise<string[] | null> {
+  const svc = rooms();
+  if (!svc) return null;
+  const names = await allRoomNames(callId);
+  // Una stanza rimasta vuota viene eliminata da LiveKit: "non trovata" vuol dire nessuno collegato
+  const lists = await Promise.all(
+    names.map((n) =>
+      svc.listParticipants(n).then(
+        (l) => l,
+        (e: { status?: number; code?: string; message?: string }) =>
+          e?.status === 404 || e?.code === "not_found" || /not.?found|does not exist/i.test(e?.message ?? "") ? [] : null
+      )
+    )
+  );
+  if (lists.some((l) => l === null)) return null;
+  return lists.flatMap((l) => l!.map((p) => p.identity));
+}
+
+// "Esci" premuto: se non resta nessun altro, la chiamata termina per tutti
+export async function leftCall(callId: string, identity: string) {
+  const people = await connectedIdentities(callId);
+  if (!people || people.some((id) => id !== identity)) return { ended: false };
+  await endCall(callId);
+  return { ended: true };
+}
+
+export async function autoEndIfEmpty(call: CallInfo) {
+  if (!isLive(call) || !videoConfigured()) return false;
+  const now = Date.now();
+  if (now - (lastCheck.get(call.id) ?? 0) < CHECK_EVERY) return false;
+  lastCheck.set(call.id, now);
+  const db = supabaseAdmin();
+  const [{ data: joined }, { data: empty }] = await Promise.all([
+    db.from("app_settings").select("value").eq("key", joinedKey(call.id)).maybeSingle(),
+    db.from("app_settings").select("value").eq("key", emptyKey(call.id)).maybeSingle(),
+  ]);
+  if (!joined) return false;
+  const people = await connectedIdentities(call.id);
+  if (people === null) return false;
+  if (people.length) {
+    if (empty?.value) await db.from("app_settings").upsert({ key: emptyKey(call.id), value: "", updated_at: new Date().toISOString() });
+    return false;
+  }
+  const since = Number(empty?.value) || 0;
+  if (!since) {
+    await db.from("app_settings").upsert({ key: emptyKey(call.id), value: String(now), updated_at: new Date().toISOString() });
+    return false;
+  }
+  if (now - since < EMPTY_GRACE) return false;
+  await endCall(call.id);
+  return true;
 }

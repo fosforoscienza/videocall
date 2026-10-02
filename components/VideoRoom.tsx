@@ -995,7 +995,11 @@ export default function VideoRoom({
     }
     setTick((t) => t + 1);
   };
-  const leave = () => room.disconnect();
+  // Esci: se ero l'ultima persona collegata, il server termina la chiamata per tutti
+  const leave = () => {
+    room.disconnect();
+    if (code) fetch(`/api/call/${code}/left`, { method: "POST", keepalive: true }).catch(() => {});
+  };
 
   const sendChat = (text: string) => {
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
