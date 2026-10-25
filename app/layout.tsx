@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import { VIDEO_CONFIG } from "@/lib/video-config";
@@ -31,6 +32,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="main">{children}</main>
           <Footer />
         </div>
+        {/* Umami (analytics.fosforoscienza.it): statistiche anonime senza cookie. data-domains limita la
+            misura al dominio di produzione, così le anteprime e il progetto Vercel non contano. */}
+        <Script
+          src="https://analytics.fosforoscienza.it/fs.js"
+          data-website-id="76f6fe7f-ad31-4ca5-9d54-298710674f50"
+          data-domains="call.fosforoscienza.it"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
