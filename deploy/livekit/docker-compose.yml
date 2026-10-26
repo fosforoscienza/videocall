@@ -1,0 +1,34 @@
+# LiveKit (audio e video delle videochiamate) sullo stesso server di Coolify, fuori dalle app di Coolify.
+# Sul server: /opt/livekit/docker-compose.yml + /opt/livekit/livekit.yaml (da livekit.example.yaml, con le chiavi vere).
+#   cd /opt/livekit && sudo docker compose up -d
+# Traefik (il proxy di Coolify) gira a LiveKit solo /rtc e /twirp dell'indirizzo dell'app:
+# così LIVEKIT_URL è wss://call.fosforoscienza.it e non serve un altro sottodominio né un altro certificato.
+# Audio e video viaggiano direttamente su 7882/udp (o 7881/tcp se l'UDP è bloccato): vanno aperte nel firewall
+#   sudo ufw route allow proto udp from any to any port 7882
+#   sudo ufw route allow proto tcp from any to any port 7881
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    container_name: livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    networks:
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.routers.livekit.entryPoints=https
+      - traefik.http.routers.livekit.rule=Host(`call.fosforoscienza.it`) && (PathPrefix(`/rtc`) || PathPrefix(`/twirp`))
+      - traefik.http.routers.livekit.tls=true
+      - traefik.http.routers.livekit.tls.certresolver=letsencrypt
+      - traefik.http.routers.livekit.service=livekit
+      - traefik.http.services.livekit.loadbalancer.server.port=7880
+
+networks:
+  coolify:
+    external: true

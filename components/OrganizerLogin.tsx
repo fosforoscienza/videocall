@@ -4,7 +4,7 @@ import { useState } from "react";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 
 // Accesso degli organizzatori (nomi e password nella variabile d'ambiente VIDEO_ORGANIZERS).
-// demo: credenziali di prova da mostrare quando l'app gira senza database (lib/demo-db.ts)
+// demo: credenziali di prova da mostrare quando l'app gira in modalità demo, senza database (lib/local-db.ts)
 export default function OrganizerLogin({ demo }: { demo?: { name: string; password: string } }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

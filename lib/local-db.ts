@@ -1,17 +1,27 @@
 import "server-only";
 import { randomUUID } from "crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import path from "path";
 import { env, supabaseUrl } from "./env";
 
 // ============================================================================================
-//  MODALITÀ DEMO — database finto, tenuto in memoria, per provare l'app senza Supabase.
+//  DATABASE LOCALE — usato quando mancano SUPABASE_URL (o NEXT_PUBLIC_SUPABASE_URL) o SUPABASE_SERVICE_ROLE_KEY.
 //
-//  Si attiva da sola quando mancano SUPABASE_URL (o NEXT_PUBLIC_SUPABASE_URL) o SUPABASE_SERVICE_ROLE_KEY.
 //  Imita solo la parte del client Supabase usata da lib/video.ts e lib/video-auth.ts.
-//  I dati si perdono a ogni riavvio del server (e a ogni Redeploy su Coolify):
-//  va bene per lavorare sulla grafica, non per le videochiamate vere.
+//  - Con DATA_DIR (es. /data, un volume di Coolify) i dati stanno nel file DATA_DIR/videocall.json
+//    e restano dopo riavvii e Redeploy: va bene per l'uso vero (un solo server, poche righe).
+//  - Senza DATA_DIR è la MODALITÀ DEMO: tutto in memoria, si perde a ogni riavvio.
+//    Va bene per lavorare sulla grafica, non per le videochiamate vere.
 // ============================================================================================
 
-export const isDemo = () => !supabaseUrl() || !env("SUPABASE_SERVICE_ROLE_KEY");
+export const usesSupabase = () => !!supabaseUrl() && !!env("SUPABASE_SERVICE_ROLE_KEY");
+
+export function dataFile() {
+  const dir = env("DATA_DIR");
+  return dir ? path.join(dir, "videocall.json") : null;
+}
+
+export const isDemo = () => !usesSupabase() && !dataFile();
 
 // Credenziali di prova (valgono solo in modalità demo)
 export const DEMO_ORGANIZER = { name: "demo", password: "demo" };
@@ -38,15 +48,27 @@ const DEFAULTS: Record<string, () => Row> = {
 // In globalThis così sopravvive ai ricaricamenti di "npm run dev"
 const store = globalThis as unknown as { __videoDemoDb?: Tables };
 
+// Il file si legge una volta sola: poi le letture sono in memoria e ogni modifica lo riscrive per intero
 function tables(): Tables {
   if (!store.__videoDemoDb) {
+    const file = dataFile();
+    const saved = file && existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Tables) : {};
     store.__videoDemoDb = {
-      app_settings: [],
-      video_calls: [],
-      video_call_requests: [],
+      app_settings: saved.app_settings ?? [],
+      video_calls: saved.video_calls ?? [],
+      video_call_requests: saved.video_call_requests ?? [],
     };
   }
   return store.__videoDemoDb;
+}
+
+// Scrive prima un file temporaneo e poi lo rinomina: se il server si spegne a metà, il file vecchio resta intero
+function save() {
+  const file = dataFile();
+  if (!file) return;
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(`${file}.tmp`, JSON.stringify(tables()));
+  renameSync(`${file}.tmp`, file);
 }
 
 // "%" e "_" come in SQL, "\" per usarli alla lettera; senza distinguere maiuscole e minuscole
@@ -62,7 +84,7 @@ function likeToRegExp(pattern: string) {
   return new RegExp(`^${re}$`, "i");
 }
 
-class DemoQuery implements PromiseLike<Result> {
+class LocalQuery implements PromiseLike<Result> {
   private op: "select" | "insert" | "update" | "upsert" | "delete" = "select";
   private payload: Row = {};
   private columns: string | null = null;
@@ -134,7 +156,18 @@ class DemoQuery implements PromiseLike<Result> {
       .then(onfulfilled, onrejected);
   }
 
+  // Errori del file (illeggibile, disco pieno, cartella senza permessi) come errori del database
   private run(): Result {
+    try {
+      const result = this.apply();
+      if (this.op !== "select" && !result.error) save();
+      return result;
+    } catch (e) {
+      return { data: null, error: { code: "LOCAL", message: `file ${dataFile()}: ${(e as Error).message}` } };
+    }
+  }
+
+  private apply(): Result {
     const rows = (tables()[this.table] ??= []);
     const match = (r: Row) => this.filters.every((f) => f(r));
     const pk = PRIMARY[this.table] ?? ["id"];
@@ -175,6 +208,6 @@ class DemoQuery implements PromiseLike<Result> {
   }
 }
 
-export function demoClient() {
-  return { from: (table: string) => new DemoQuery(table) };
+export function localClient() {
+  return { from: (table: string) => new LocalQuery(table) };
 }

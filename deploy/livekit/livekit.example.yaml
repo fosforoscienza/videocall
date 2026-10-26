@@ -1,0 +1,14 @@
+# Copia in livekit.yaml e metti una chiave e un segreto lunghi e casuali, per esempio:
+#   echo "API$(openssl rand -hex 8): $(openssl rand -base64 36 | tr -d '/+=')"
+# Le stesse due parole vanno su Coolify in LIVEKIT_API_KEY e LIVEKIT_API_SECRET.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # IP pubblico del server: è quello che i browser usano per mandare audio e video
+  node_ip: 51.195.149.17
+  use_external_ip: false
+keys:
+  APIchiave: segreto-lungo-e-casuale
+logging:
+  level: info

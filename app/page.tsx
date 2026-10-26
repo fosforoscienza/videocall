@@ -1,6 +1,6 @@
 import OrganizerConsole from "@/components/OrganizerConsole";
 import OrganizerLogin from "@/components/OrganizerLogin";
-import { DEMO_ORGANIZER, isDemo } from "@/lib/demo-db";
+import { DEMO_ORGANIZER, isDemo } from "@/lib/local-db";
 import { env } from "@/lib/env";
 import { currentUser } from "@/lib/video-auth";
 

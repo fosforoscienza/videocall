@@ -23,56 +23,63 @@ oppure si copia dentro un altro sito fatto con Next.js.
   usa microfono o fotocamera; altrove (Safari, iPhone, iPad, webinar) con il pulsante della finestrella.
 - Ottimizzata per telefono e iPad.
 
-Audio e video passano da **LiveKit Cloud**; chiamate, sala d'attesa e impostazioni stanno su **Supabase**.
+Audio e video passano da **LiveKit**, installato sullo stesso server (oppure LiveKit Cloud); chiamate, sala d'attesa
+e impostazioni stanno in un **file sul server** (oppure su Supabase). Non serve nessun servizio esterno.
 
 ## Cosa serve
 
 | Servizio | A cosa serve | Costo |
 | --- | --- | --- |
-| [LiveKit Cloud](https://cloud.livekit.io) | audio e video | piano gratuito per iniziare |
-| [Supabase](https://supabase.com) | database | piano gratuito |
-| [Coolify](https://coolify.io) su un server (es. Debian) | pubblicare l'app | gratis (paghi solo il server) |
+| [Coolify](https://coolify.io) su un server (es. Debian) | pubblicare l'app e salvare i dati | gratis (paghi solo il server) |
+| [LiveKit](https://livekit.io) sullo stesso server ([`deploy/livekit`](deploy/livekit)) | audio e video | gratis (open source) |
+| ([Supabase](https://supabase.com) o [LiveKit Cloud](https://cloud.livekit.io)) | facoltativi, al posto del server | piano gratuito |
 
 Node.js 20 o più recente per provarla sul computer.
 
 ---
 
+## Il database
+
+Le tabelle sono tre e piccole (impostazioni, chiamate, sala d'attesa): non serve un server di database.
+[`lib/local-db.ts`](lib/local-db.ts) le tiene in memoria e, con `DATA_DIR`, le salva nel file `DATA_DIR/videocall.json`
+a ogni modifica. Su Coolify `DATA_DIR=/data` con un volume (*Persistent Storage*) montato in `/data`: i dati restano
+dopo riavvii e Redeploy. Se invece ci sono `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` l'app usa Supabase
+(tabelle in [`supabase/schema.sql`](supabase/schema.sql)).
+
 ## Modalità demo (senza database)
 
-Per provare l'app o lavorare sulla grafica non serve Supabase: se mancano `SUPABASE_URL` o
-`SUPABASE_SERVICE_ROLE_KEY` l'app usa un database finto tenuto in memoria ([`lib/demo-db.ts`](lib/demo-db.ts)).
+Per provare l'app o lavorare sulla grafica: senza `DATA_DIR` e senza Supabase l'app tiene tutto in memoria.
 
 - Organizzatore: **demo** / **demo** (se `VIDEO_ORGANIZERS` è vuota). `SESSION_SECRET` non serve.
 - I partecipanti entrano dal link scrivendo un nome qualsiasi (e la password, se l'hai scelta per la riunione).
 - Si possono avviare e programmare chiamate, usare la sala d'attesa e le impostazioni anche senza LiveKit;
   per entrare nella stanza con audio e video servono comunque `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`.
-- I dati si azzerano quando il server riparte. Appena aggiungi le variabili Supabase la modalità demo si spegne da sola.
+- I dati si azzerano quando il server riparte. Appena imposti `DATA_DIR` (o Supabase) la modalità demo si spegne da sola.
 
 ## Strada A — app separata (consigliata, va bene con qualsiasi sito)
 
 Funziona con qualsiasi sito (WordPress, Wix, HTML, Next.js...): le videochiamate stanno su un indirizzo a parte,
 per esempio `video.tuosito.it`, e dal sito si mette un link o un pulsante.
 
-1. **Database**: su Supabase apri *SQL Editor*, incolla tutto [`supabase/schema.sql`](supabase/schema.sql) e premi *Run*.
-   Contiene solo le tabelle delle riunioni (niente utenti).
-2. **LiveKit**: crea un progetto su LiveKit Cloud. Ti servono l'URL (`wss://...livekit.cloud`, in *Settings → Project*)
-   e una API Key con il suo segreto (*Settings → API Keys*).
-3. **Codice su GitHub**: crea un repository nuovo e caricaci il contenuto di questa cartella.
-4. **Coolify**: *+ New → Application → Public/Private Repository*, scegli il repository e il ramo `main`.
+1. **Codice su GitHub**: crea un repository nuovo e caricaci il contenuto di questa cartella.
+2. **LiveKit sul server**: copia [`deploy/livekit`](deploy/livekit) in `/opt/livekit`, crea `livekit.yaml` da
+   `livekit.example.yaml` (chiave, segreto e IP pubblico del server), cambia l'indirizzo nella regola di Traefik in
+   `docker-compose.yml` e avvia con `sudo docker compose up -d`. Apri nel firewall 7882/udp e 7881/tcp
+   (comandi in cima a `docker-compose.yml`). Traefik di Coolify gira a LiveKit `/rtc` e `/twirp` dell'indirizzo dell'app.
+3. **Coolify**: *+ New → Application → Public/Private Repository*, scegli il repository e il ramo `main`.
    - *Build Pack*: **Dockerfile** (c'è già nel repository), *Ports Exposes*: **3000**.
    - *Domains*: l'indirizzo dell'app, es. `https://video.tuosito.it` (Coolify fa da solo il certificato HTTPS;
      il DNS del sottodominio deve puntare all'IP del server).
    - *Environment Variables*: inserisci le variabili di [`.env.example`](.env.example). Non serve spuntare
      *Build Variable*: l'app le legge mentre gira.
-     - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → *Project Settings → API*;
-       va bene anche il vecchio nome `NEXT_PUBLIC_SUPABASE_URL`)
-     - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+     - `DATA_DIR=/data`, e in *Persistent Storage* un volume montato in `/data`
+     - `LIVEKIT_URL` (es. `wss://video.tuosito.it`), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (quelli di `livekit.yaml`)
      - `SESSION_SECRET`: una frase lunga e casuale (almeno 16 caratteri)
      - `VIDEO_ORGANIZERS`: gli organizzatori, come `mario:password1;anna:password2`
-5. *Deploy* (dopo ogni cambio di variabili: *Redeploy*). Poi apri `https://video.tuosito.it/api/health`:
+4. *Deploy* (dopo ogni cambio di variabili: *Redeploy*). Poi apri `https://video.tuosito.it/api/health`:
    se tutto è a posto risponde `"ok": true`, altrimenti dice quale variabile manca o è sbagliata
    (senza mostrarne il valore).
-6. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata (scegli libero, password o sala d'attesa) e condividi il link.
+5. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata (scegli libero, password o sala d'attesa) e condividi il link.
 
 Per provarla sul computer: copia `.env.example` in `.env.local`, compila i valori, poi `npm install` e `npm run dev`
 e apri http://localhost:3000.
@@ -179,13 +186,16 @@ lib/
   video.ts                    logica lato server (LiveKit + database)
   useHostCall.ts              stato della chiamata per l'organizzatore
   whiteboard.ts               lavagna virtuale: messaggi, permessi, disegno, immagine da salvare
-supabase/schema.sql           tabelle
+  local-db.ts                 database in un file (DATA_DIR) o in memoria (demo)
+deploy/livekit/               LiveKit sul server (docker compose + configurazione)
+supabase/schema.sql           tabelle (solo se usi Supabase)
 ```
 
 ## Da sapere
 
 - Una sola videochiamata in corso alla volta (più quelle programmate).
-- Le chiavi segrete (`SUPABASE_SERVICE_ROLE_KEY`, `LIVEKIT_API_SECRET`, `SESSION_SECRET`) non vanno mai nel codice né
+- Un solo server per l'app: il database in un file non va bene con più copie dell'app in parallelo.
+- Le chiavi segrete (`LIVEKIT_API_SECRET`, `SESSION_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`) non vanno mai nel codice né
   in variabili che iniziano con `NEXT_PUBLIC_`.
-- Se l'organizzatore vede un errore su LiveKit o Supabase, il messaggio dice quale variabile correggere su Coolify;
+- Se l'organizzatore vede un errore su LiveKit o sul database, il messaggio dice quale variabile correggere su Coolify;
   `/api/health` mostra tutti i controlli insieme.

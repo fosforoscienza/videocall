@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource } from "livekit-server-sdk";
-import { isDemo } from "./demo-db";
+import { isDemo } from "./local-db";
 import { env, ENV_PLACE, supabaseUrl } from "./env";
 import { supabaseAdmin } from "./supabase-admin";
 import { currentUser, type VideoUser } from "./video-auth";

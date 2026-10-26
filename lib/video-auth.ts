@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import { DEMO_ORGANIZER, isDemo } from "./demo-db";
+import { DEMO_ORGANIZER, isDemo } from "./local-db";
 import { env } from "./env";
 
 // ============================================================================================

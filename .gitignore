@@ -8,3 +8,6 @@ next-env.d.ts
 .vercel
 .DS_Store
 npm-debug.log*
+
+# database locale (DATA_DIR=./data)
+/data
