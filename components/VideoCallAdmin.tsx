@@ -11,7 +11,8 @@ import AccessPicker from "./AccessPicker";
 import { fetchRoomTicket } from "@/lib/breakout-client";
 
 // Scheda Video dell'organizzatore: avvia la videochiamata, condivide il link, decide chi entra
-export default function VideoCallAdmin({ host }: { host: HostCall }) {
+// (children: sezioni in più in fondo alla pagina, es. gli utenti per gli amministratori)
+export default function VideoCallAdmin({ host, children }: { host: HostCall; children?: React.ReactNode }) {
   const { loaded, configured, call, requests, pending, error, busy } = host;
   // breakout: stanza in cui si è (null = plenaria); initial e notice servono quando ci si sposta tra le stanze
   const [room, setRoom] = useState<{
@@ -239,6 +240,8 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
           Termina videochiamata
         </button>
       )}
+
+      {children}
 
       {room && (
         <VideoRoom

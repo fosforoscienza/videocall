@@ -10,5 +10,5 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const user = await currentUser();
   if (!user?.organizer) return <OrganizerLogin demo={isDemo() && !env("VIDEO_ORGANIZERS") ? DEMO_ORGANIZER : undefined} />;
-  return <OrganizerConsole name={user.name} />;
+  return <OrganizerConsole name={user.name} admin={!!user.admin} />;
 }

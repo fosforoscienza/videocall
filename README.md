@@ -5,8 +5,10 @@ oppure si copia dentro un altro sito fatto con Next.js.
 
 ## Cosa fa
 
-- Solo gli **organizzatori** (credenziali in `VIDEO_ORGANIZERS`) avviano (o **programmano**) una videochiamata
-  e condividono il link. Non c'è nessun elenco di utenti da gestire.
+- Solo gli **organizzatori** avviano (o **programmano**) una videochiamata e condividono il link.
+  Gli **amministratori** creano ed eliminano gli altri utenti dalla sezione **Utenti** della pagina di gestione
+  (nome e password; con lo stesso nome si cambia la password) e scelgono se sono semplici organizzatori o anche
+  amministratori. Quelli in `VIDEO_ORGANIZERS` sono amministratori fissi: non si tolgono dalla pagina.
 - Per ogni riunione l'organizzatore sceglie l'accesso: **libero** (basta il nome), **con password** (nome +
   password della riunione) oppure **sala d'attesa** (l'organizzatore ammette o rifiuta; password facoltativa).
 - **Stanze**: l'organizzatore divide la chiamata in gruppi e sposta i partecipanti; la chiamata termina da sola
@@ -75,7 +77,8 @@ per esempio `video.tuosito.it`, e dal sito si mette un link o un pulsante.
      - `DATA_DIR=/data`, e in *Persistent Storage* un volume montato in `/data`
      - `LIVEKIT_URL` (es. `wss://video.tuosito.it`), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (quelli di `livekit.yaml`)
      - `SESSION_SECRET`: una frase lunga e casuale (almeno 16 caratteri)
-     - `VIDEO_ORGANIZERS`: gli organizzatori, come `mario:password1;anna:password2`
+     - `VIDEO_ORGANIZERS`: gli amministratori, come `mario:password1;anna:password2` (gli altri utenti si creano
+       poi dalla pagina di gestione, sezione *Utenti*)
 4. *Deploy* (dopo ogni cambio di variabili: *Redeploy*). Poi apri `https://video.tuosito.it/api/health`:
    se tutto è a posto risponde `"ok": true`, altrimenti dice quale variabile manca o è sbagliata
    (senza mostrarne il valore).
@@ -174,10 +177,12 @@ app/
   api/admin/call/...          API dell'organizzatore (avvio, azioni, impostazioni, programmate, gettone)
   api/call/[code]/...         API dei partecipanti (ingresso, passaggio del ruolo di organizzatore)
   api/login, api/logout       accesso degli organizzatori
+  api/admin/users             utenti creati dagli amministratori
 components/
   VideoRoom.tsx               la videochiamata (riquadri, comandi, chat, schermo, finestrella)
   CallJoin.tsx                ingresso dal link
   VideoCallAdmin.tsx          pannello dell'organizzatore
+  OrganizerUsers.tsx          utenti (solo per gli amministratori)
   Whiteboard.tsx              lavagna virtuale (tratti e post-it)
   ...                         chat, disegni sullo schermo, dispositivi, interruttori
 lib/

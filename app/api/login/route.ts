@@ -9,6 +9,6 @@ export async function POST(req: Request) {
   if (!result.user.organizer) {
     return NextResponse.json({ error: "Questa pagina è per gli organizzatori: entra dal link della videochiamata." }, { status: 403 });
   }
-  await startSession(result.user);
+  await startSession(result.user, result.key);
   return NextResponse.json({ ok: true });
 }
