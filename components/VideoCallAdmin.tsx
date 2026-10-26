@@ -91,7 +91,7 @@ export default function VideoCallAdmin({ host }: { host: HostCall }) {
         <h3>{call ? (call.listen_only ? "🔴 Videochiamata in corso · 📺 webinar" : "🔴 Videochiamata in corso") : "Videochiamata"}</h3>
         {!configured && (
           <p className="error">
-            Videochiamate non configurate: su Vercel mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET (vedi README).
+            Videochiamate non configurate: su Coolify (app → Environment Variables) mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET. Aggiungile e fai Redeploy (vedi README).
           </p>
         )}
         {!call ? (

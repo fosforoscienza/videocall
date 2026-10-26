@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cancelScheduled, cleanAccess, cleanTitle, requireOrganizer, scheduleCall, startScheduled, updateScheduled, videoConfigured } from "@/lib/video";
+import { cancelScheduled, cleanAccess, cleanTitle, requireOrganizer, scheduleCall, startScheduled, updateScheduled, videoConfigured, LIVEKIT_MISSING } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   if (action === "create" || action === "update") {
     if (!startsAt) return NextResponse.json({ error: "Scegli data e ora" }, { status: 400 });
     if (action === "create") {
-      if (!videoConfigured()) return NextResponse.json({ error: "Videochiamate non configurate su Vercel (LiveKit)." }, { status: 500 });
+      if (!videoConfigured()) return NextResponse.json({ error: LIVEKIT_MISSING }, { status: 500 });
       result = await scheduleCall(admin.name, title, startsAt, listenOnly === true, access);
     } else {
       if (!id) return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });

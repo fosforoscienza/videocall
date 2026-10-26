@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { activeCall, autoEndIfEmpty, cleanAccess, cleanTitle, endCall, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured } from "@/lib/video";
+import { activeCall, autoEndIfEmpty, cleanAccess, cleanTitle, endCall, isShareAll, listRequests, openCalls, renameCall, requireCallHost, requireOrganizer, startCall, videoConfigured, LIVEKIT_MISSING } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +33,7 @@ export async function POST(req: Request) {
   const admin = await requireOrganizer();
   if (!admin) return unauthorized();
   if (!videoConfigured()) {
-    return NextResponse.json(
-      { error: "Videochiamate non configurate: mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET su Vercel." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: LIVEKIT_MISSING }, { status: 500 });
   }
   const body = await req.json().catch(() => ({}));
   const access = body.access === undefined ? undefined : cleanAccess(body.access);
