@@ -14,6 +14,9 @@ oppure si copia dentro un altro sito fatto con Next.js.
 - **Riunione** (tutti parlano) oppure **webinar** (i partecipanti guardano, ascoltano e scrivono in chat).
 - Fotocamera e microfono accesi in automatico; scelta di fotocamera, microfono e altoparlante.
 - **Condivisione schermo** con audio e **lavagna** sopra lo schermo (penna, evidenziatore, gomma).
+- **Lavagna virtuale** condivisa: pennarelli di vari colori e spessori, evidenziatore, gomma e **post-it colorati**
+  da scrivere e spostare; l'organizzatore la apre per tutti e sceglie se possono scriverci **tutti** o **solo gli organizzatori**.
+  Si salva come immagine.
 - **Chat** laterale, **co-organizzatori** (se l'organizzatore esce il ruolo passa da solo), silenzia uno o tutti.
 - Griglia senza spazi vuoti, persona **fissata in grande**, vista "**chi parla in grande**", più pagine con tante persone.
 - **Finestrella** (Picture-in-Picture) quando si cambia scheda: Chrome/Edge da computer la aprono da soli se la pagina
@@ -161,12 +164,14 @@ components/
   VideoRoom.tsx               la videochiamata (riquadri, comandi, chat, schermo, finestrella)
   CallJoin.tsx                ingresso dal link
   VideoCallAdmin.tsx          pannello dell'organizzatore
-  ...                         chat, lavagna, dispositivi, interruttori
+  Whiteboard.tsx              lavagna virtuale (tratti e post-it)
+  ...                         chat, disegni sullo schermo, dispositivi, interruttori
 lib/
   video-auth.ts               ← utenti e accesso (da adattare al tuo sito)
   video-config.ts             ← nome, logo, testi
   video.ts                    logica lato server (LiveKit + database)
   useHostCall.ts              stato della chiamata per l'organizzatore
+  whiteboard.ts               lavagna virtuale: messaggi, permessi, disegno, immagine da salvare
 supabase/schema.sql           tabelle
 ```
 

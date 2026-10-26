@@ -10,6 +10,7 @@ export type IconName =
   | "flip"
   | "share"
   | "pen"
+  | "board"
   | "settings"
   | "pip"
   | "chat"
@@ -61,6 +62,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
       <path d="m14.5 5.5 3 3" />
+    </>
+  ),
+  // lavagna su cavalletto
+  board: (
+    <>
+      <rect x="3" y="3.5" width="18" height="12.5" rx="2" />
+      <path d="m7 11.5 3-3 2.5 2.5L17 7M12 16v3.5M8 21l4-1.5 4 1.5" />
     </>
   ),
   settings: (

@@ -18,11 +18,13 @@ import {
 } from "livekit-client";
 import type { HostCall } from "@/lib/useHostCall";
 import ScreenBoard from "./ScreenBoard";
+import Whiteboard from "./Whiteboard";
 import AccessToggle from "./AccessToggle";
 import CallChat, { CHAT_MAX, CHAT_TOPIC, type ChatMessage } from "./CallChat";
 import DeviceSettings, { loadDevices, saveDevice, useDeviceList, type DeviceChoice, type DeviceKind } from "./DeviceSettings";
 import { playSound } from "@/lib/sounds";
 import { applyBoard, BOARD_TOPIC, COLORS, syncMessages, type BoardMsg, type Stroke, type Tool } from "@/lib/board";
+import { allowedFromGuest, applyWb, emptyBoard, parseWb, WB_TOPIC, wbSync, type WbMode, type WbMsg, type WbState } from "@/lib/whiteboard";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 import { seenAssignment } from "@/lib/breakout-client";
 import { BREAKOUT_TOPIC, shareText, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
@@ -67,6 +69,10 @@ function isCohost(p: Participant) {
 
 // Organizzatore "pieno" (non co-organizzatore): non può essere silenziato o tolto dagli altri
 const isFullHost = (p: Participant) => isHost(p) && !isCohost(p);
+
+// Chi è entrato per primo (a parità, in ordine di identità: uguale per tutti)
+const byJoin = (list: Participant[]) =>
+  [...list].sort((a, b) => (a.joinedAt?.getTime() ?? 0) - (b.joinedAt?.getTime() ?? 0) || a.identity.localeCompare(b.identity))[0];
 
 // Numero di colonne che rende i riquadri più grandi possibile nello spazio disponibile
 // Persone divise nelle file nel modo più uniforme possibile (es. 5 → 3 + 2, 7 → 3 + 2 + 2): nelle file con meno
@@ -231,6 +237,9 @@ export default function VideoRoom({
   const [drawing, setDrawing] = useState(false);
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState(COLORS[0]);
+  // Lavagna virtuale (foglio bianco condiviso, aperto dagli organizzatori)
+  const wb = useRef<WbState>(emptyBoard());
+  const [wbVersion, setWbVersion] = useState(0);
   // Chat
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
@@ -373,6 +382,28 @@ export default function VideoRoom({
         }
         return;
       }
+      if (topic === WB_TOPIC && from) {
+        try {
+          const m = parseWb(JSON.parse(decoder.decode(payload)));
+          if (!m) return;
+          const b = wb.current;
+          // Chi non è organizzatore scrive solo se la lavagna è aperta a tutti
+          if (!isHost(from) && !(b.open && b.mode === "all" && allowedFromGuest(m, from.identity))) return;
+          const before = { open: b.open, mode: b.mode };
+          applyWb(b, m);
+          if (m.t === "o" && (before.open !== b.open || (b.open && before.mode !== b.mode))) {
+            const who = from.name || "L'organizzatore";
+            if (!b.open) setNotice(`${who} ha chiuso la lavagna.`);
+            else if (isHost(room.localParticipant)) setNotice(`🧑‍🏫 ${who} ha aperto la lavagna.`);
+            else if (b.mode === "all") setNotice(before.open ? "✏️ Ora puoi scrivere anche tu sulla lavagna." : `🧑‍🏫 ${who} ha aperto la lavagna: puoi scriverci anche tu.`);
+            else setNotice(before.open ? "Ora sulla lavagna scrivono solo gli organizzatori." : `🧑‍🏫 ${who} ha aperto la lavagna.`);
+          }
+          setWbVersion((v) => v + 1);
+        } catch {
+          // messaggio non valido: ignorato
+        }
+        return;
+      }
       if (topic !== BOARD_TOPIC || !from || !isHost(from)) return;
       try {
         applyBoard(strokes.current, JSON.parse(decoder.decode(payload)) as BoardMsg);
@@ -406,6 +437,17 @@ export default function VideoRoom({
       for (const m of syncMessages(strokes.current)) {
         room.localParticipant
           .publishData(encoder.encode(JSON.stringify(m)), { reliable: true, topic: BOARD_TOPIC, destinationIdentities: [p.identity] })
+          .catch(() => {});
+      }
+    });
+    // Chi entra mentre la lavagna è aperta la riceve da un solo organizzatore (quello entrato per primo)
+    room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
+      if (!wb.current.open) return;
+      const hosts = [room.localParticipant, ...room.remoteParticipants.values()].filter((x) => x.identity !== p.identity && isHost(x));
+      if (!byJoin(hosts)?.isLocal) return;
+      for (const m of wbSync(wb.current)) {
+        room.localParticipant
+          .publishData(encoder.encode(JSON.stringify(m)), { reliable: true, topic: WB_TOPIC, destinationIdentities: [p.identity] })
           .catch(() => {});
       }
     });
@@ -548,6 +590,8 @@ export default function VideoRoom({
   const all = everyone.filter(onStage);
   const audience = everyone.length - all.length;
   const screenNow = screenOf(all);
+  // La lavagna aperta va in grande al posto dello schermo condiviso
+  const boardOpen = connected && wb.current.open;
   // Vista effettiva: l'organizzatore usa (e decide) quella per tutti, gli altri possono sceglierne una propria
   const view: Layout = host ? layout : (myLayout ?? layout);
   const pinnedP = view.pin ? (all.find((p) => p.identity === view.pin) ?? null) : null;
@@ -556,8 +600,8 @@ export default function VideoRoom({
     view.mode === "speaker" && !pinnedP
       ? (all.find((p) => p.identity === lastSpeaker && !p.isLocal) ?? all.find((p) => !p.isLocal) ?? null)
       : null;
-  const mainP = screenNow ? null : (pinnedP ?? featuredP);
-  const hasMain = !!screenNow || !!mainP;
+  const mainP = screenNow || boardOpen ? null : (pinnedP ?? featuredP);
+  const hasMain = boardOpen || !!screenNow || !!mainP;
   const others = mainP ? all.filter((p) => p !== mainP) : all;
   const { w, h } = size;
   const landscape = w >= 700 && w > h * 1.1;
@@ -746,8 +790,6 @@ export default function VideoRoom({
   const sawHost = useRef(false);
   if (fullHostHere) sawHost.current = true;
   const cohostsHere = everyone.filter((p) => isHost(p) && isCohost(p));
-  const byJoin = (list: Participant[]) =>
-    [...list].sort((a, b) => (a.joinedAt?.getTime() ?? 0) - (b.joinedAt?.getTime() ?? 0) || a.identity.localeCompare(b.identity))[0];
   const heir = !fullHostHere && everyone.length ? (cohostsHere.length ? byJoin(cohostsHere) : byJoin(everyone)) : undefined;
   const iAmHeir = !!claimUrl && !!heir && heir.isLocal && sawHost.current;
   useEffect(() => {
@@ -796,6 +838,29 @@ export default function VideoRoom({
       room?.localParticipant.publishData(encoder.encode(JSON.stringify(m)), { reliable: true, topic: BOARD_TOPIC }).catch(() => {});
     },
     [room]
+  );
+
+  const sendWb = useCallback(
+    (m: WbMsg) => {
+      room?.localParticipant.publishData(encoder.encode(JSON.stringify(m)), { reliable: true, topic: WB_TOPIC }).catch(() => {});
+    },
+    [room]
+  );
+  const bumpWb = useCallback(() => setWbVersion((v) => v + 1), []);
+  // Aprendo la lavagna tutti ricevono quella dell'organizzatore (anche ciò che c'era prima della chiusura)
+  const openBoard = useCallback(() => {
+    wb.current.open = true;
+    for (const m of wbSync(wb.current)) sendWb(m);
+    bumpWb();
+  }, [sendWb, bumpWb]);
+  const boardState = useCallback(
+    (open: boolean, mode: WbMode) => {
+      const m: WbMsg = { t: "o", open, mode };
+      applyWb(wb.current, m);
+      sendWb(m);
+      bumpWb();
+    },
+    [sendWb, bumpWb]
   );
 
   // Apre la finestrella: su Chrome/Edge con video e comandi (Document Picture-in-Picture),
@@ -936,6 +1001,10 @@ export default function VideoRoom({
   const mayShare = !!host || (!listening && (sources.length === 0 || sources.includes(3 /* SCREEN_SHARE */)));
   const canShareScreen = mayShare && typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
   const reconnecting = room.state === ConnectionState.Reconnecting || room.state === ConnectionState.SignalReconnecting;
+  // Lavagna: la aprono e la chiudono gli organizzatori, che scelgono se possono scriverci tutti
+  const wbManage = isHost(lp);
+  const wbWrite = boardOpen && (wbManage || wb.current.mode === "all");
+  const toggleBoard = () => (boardOpen ? boardState(false, wb.current.mode) : openBoard());
 
   const toggleMic = async () => {
     setMediaError("");
@@ -1090,7 +1159,7 @@ export default function VideoRoom({
   // Schermo stretto: se i comandi secondari sono più di uno vanno nel menu "Altro"
   const compact = w < 600;
   // (i dispositivi ci sono sempre)
-  const secondary = [!listening && canFlip && camOn, canShareScreen, !!host && !!screen, true, canPip, true].filter(Boolean).length;
+  const secondary = [!listening && canFlip && camOn, canShareScreen, !!host && !!screen && !boardOpen, wbManage, true, canPip, true].filter(Boolean).length;
   const useMore = compact && secondary >= 2;
   const moreDo = (fn: () => void) => () => {
     setMoreOpen(false);
@@ -1198,7 +1267,7 @@ export default function VideoRoom({
       )}
 
       <div ref={body} className="call-body">
-        {connected && listenMode && !all.length ? (
+        {connected && listenMode && !all.length && !boardOpen ? (
           <div className="call-empty">
             <span aria-hidden>📺</span>
             <p>Aspettiamo l&apos;organizzatore: appena entra lo vedi e lo senti qui.</p>
@@ -1206,7 +1275,19 @@ export default function VideoRoom({
         ) : hasMain ? (
           <div className={`call-stage ${landscape ? "side" : "below"}`}>
             <div className="call-stage-main" data-pip="1">
-              {screen?.pub?.track ? (
+              {boardOpen ? (
+                <Whiteboard
+                  board={wb}
+                  version={wbVersion}
+                  me={lp.identity}
+                  canWrite={wbWrite}
+                  manage={wbManage}
+                  send={sendWb}
+                  onLocal={bumpWb}
+                  onMode={(mode) => boardState(true, mode)}
+                  onClose={() => boardState(false, wb.current.mode)}
+                />
+              ) : screen?.pub?.track ? (
                 <ScreenBoard
                   track={screen.pub.track}
                   label={screen.p.isLocal ? "Stai condividendo lo schermo" : `Schermo di ${screen.p.name || screen.p.identity}`}
@@ -1218,7 +1299,7 @@ export default function VideoRoom({
               ) : (
                 mainP && <Tile key={mainP.identity} p={mainP} big pinned={mainP === pinnedP} mirror={mainP.isLocal && facing === "user"} menu={tileMenu(mainP)} />
               )}
-              {host && drawing && (
+              {host && drawing && !boardOpen && (
                 <div className="call-tools">
                   {(
                     [
@@ -1330,9 +1411,14 @@ export default function VideoRoom({
               <Icon name="share" />
             </button>
           )}
-          {!useMore && host && screen && (
+          {!useMore && host && screen && !boardOpen && (
             <button className={`call-btn ${drawing ? "active" : ""}`} onClick={() => setDrawing(!drawing)} aria-label={drawing ? "Smetti di disegnare" : "Disegna sullo schermo"} title={drawing ? "Smetti di disegnare" : "Disegna sullo schermo"}>
               <Icon name="pen" />
+            </button>
+          )}
+          {!useMore && wbManage && (
+            <button className={`call-btn ${boardOpen ? "active" : ""}`} onClick={toggleBoard} disabled={!connected} aria-label={boardOpen ? "Chiudi la lavagna" : "Apri la lavagna"} title={boardOpen ? "Chiudi la lavagna" : "Apri la lavagna"}>
+              <Icon name="board" />
             </button>
           )}
           {!useMore && (
@@ -1440,7 +1526,20 @@ export default function VideoRoom({
         createPortal(
           <div className="pip">
             <div className="pip-main">
-              {screen?.pub?.track ? (
+              {boardOpen ? (
+                <Whiteboard
+                  board={wb}
+                  version={wbVersion}
+                  me={lp.identity}
+                  canWrite={false}
+                  manage={false}
+                  mini
+                  send={sendWb}
+                  onLocal={bumpWb}
+                  onMode={() => {}}
+                  onClose={() => {}}
+                />
+              ) : screen?.pub?.track ? (
                 <ScreenBoard
                   track={screen.pub.track}
                   label={screen.p.isLocal ? "Il tuo schermo" : `Schermo di ${screen.p.name || screen.p.identity}`}
@@ -1519,7 +1618,12 @@ export default function VideoRoom({
                 🖥️ {sharing ? "Smetti di condividere lo schermo" : "Condividi lo schermo"}
               </button>
             )}
-            {host && screen && (
+            {wbManage && (
+              <button className="btn btn-ghost" onClick={moreDo(toggleBoard)}>
+                🧑‍🏫 {boardOpen ? "Chiudi la lavagna" : "Apri la lavagna"}
+              </button>
+            )}
+            {host && screen && !boardOpen && (
               <button className="btn btn-ghost" onClick={moreDo(() => setDrawing(!drawing))}>
                 ✏️ {drawing ? "Smetti di disegnare" : "Disegna sullo schermo"}
               </button>

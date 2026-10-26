@@ -1392,6 +1392,182 @@ video.mirror {
   background: rgb(var(--fg-rgb) / 0.25);
 }
 
+/* lavagna virtuale: foglio bianco condiviso con tratti e post-it */
+.call-wb {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 16px;
+  background: rgb(var(--deep-rgb) / 0.6);
+  border: 2px solid rgb(var(--fg-rgb) / 0.15);
+}
+.call-wb.mini {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.call-wb-tools {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 12px;
+  background: rgb(var(--deep-rgb) / 0.92);
+  border: 2px solid rgb(var(--fg-rgb) / 0.25);
+}
+.call-wb-tools > * {
+  flex-shrink: 0;
+}
+.call-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.call-color.square {
+  border-radius: 6px;
+}
+.call-size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.call-size span {
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 0 0 1.5px rgb(var(--fg-rgb) / 0.7);
+}
+.call-wb-mode {
+  width: auto;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.call-wb-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.call-wb-page {
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgb(var(--shadow-rgb) / 0.35);
+}
+.call-wb-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.call-wb-ink.drawing {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+.call-wb-ink.drawing.tool-er {
+  cursor: cell;
+}
+.call-wb-ink.drawing.tool-note {
+  cursor: copy;
+}
+.call-wb-note {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 3px;
+  color: #1d1d1d;
+  line-height: 1.25;
+  font-weight: 600;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.25);
+}
+.call-wb-note-bar {
+  flex-shrink: 0;
+  height: 20%;
+  min-height: 16px;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(0 0 0 / 0.07);
+  cursor: grab;
+  touch-action: none;
+}
+.call-wb-note-bar:active {
+  cursor: grabbing;
+}
+.call-wb-note-bar button {
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgb(0 0 0 / 0.55);
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.call-wb-note textarea,
+.call-wb-note-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 6%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: none;
+  outline: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.call-wb-note textarea::placeholder {
+  color: rgb(0 0 0 / 0.4);
+}
+.call-wb-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 4px;
+}
+.call-wb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+/* telefono: gli strumenti in una sola fila che scorre */
+@media (max-width: 640px) {
+  .call-wb {
+    padding: 4px;
+  }
+  .call-wb-tools {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .call-wb-tools::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* chat a bordo schermo: su computer affianca la videochiamata, sul telefono la copre */
 .call-chat {
   position: fixed;
@@ -1686,7 +1862,8 @@ video.mirror {
   display: flex;
 }
 .pip-main > .call-tile,
-.pip-main > .call-screen {
+.pip-main > .call-screen,
+.pip-main > .call-wb {
   flex: 1;
 }
 .pip-strip {
