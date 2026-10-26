@@ -25,8 +25,7 @@ export default function OrganizerConsole({ name, admin }: { name: string; admin:
           Esci
         </button>
       </div>
-      <VideoCallAdmin host={host} />
-      {admin && <OrganizerUsers />}
+      <VideoCallAdmin host={host}>{admin && <OrganizerUsers />}</VideoCallAdmin>
     </div>
   );
 }

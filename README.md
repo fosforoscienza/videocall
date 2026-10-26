@@ -6,8 +6,9 @@ oppure si copia dentro un altro sito fatto con Next.js.
 ## Cosa fa
 
 - Solo gli **organizzatori** avviano (o **programmano**) una videochiamata e condividono il link.
-  Gli **amministratori** (credenziali in `VIDEO_ORGANIZERS`) creano ed eliminano gli altri organizzatori dalla
-  sezione **Utenti** della pagina di gestione (nome e password; con lo stesso nome si cambia la password).
+  Gli **amministratori** creano ed eliminano gli altri utenti dalla sezione **Utenti** della pagina di gestione
+  (nome e password; con lo stesso nome si cambia la password) e scelgono se sono semplici organizzatori o anche
+  amministratori. Quelli in `VIDEO_ORGANIZERS` sono amministratori fissi: non si tolgono dalla pagina.
 - Per ogni riunione l'organizzatore sceglie l'accesso: **libero** (basta il nome), **con password** (nome +
   password della riunione) oppure **sala d'attesa** (l'organizzatore ammette o rifiuta; password facoltativa).
 - **Stanze**: l'organizzatore divide la chiamata in gruppi e sposta i partecipanti; la chiamata termina da sola

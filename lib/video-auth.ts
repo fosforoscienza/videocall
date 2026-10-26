@@ -18,8 +18,8 @@ import { supabaseAdmin } from "./supabase-admin";
 //  Implementazione inclusa (nessun elenco di utenti da gestire):
 //    - amministratori dalla variabile d'ambiente VIDEO_ORGANIZERS ("mario:password1;anna:password2"):
 //      sono organizzatori e in più creano ed eliminano gli altri utenti dalla pagina di gestione
-//    - utenti creati dagli amministratori: organizzatori anche loro, salvati nel database (app_settings,
-//      password cifrata con scrypt)
+//    - utenti creati dagli amministratori: organizzatori anche loro (e, se scelto, amministratori),
+//      salvati nel database (app_settings, password cifrata con scrypt)
 //    - partecipanti: solo il nome, scritto entrando dal link (la password della riunione, se c'è,
 //      la controlla lib/video.ts per ogni riunione)
 //    - sessione in un cookie firmato (SESSION_SECRET), valida 7 giorni
@@ -29,7 +29,8 @@ import { supabaseAdmin } from "./supabase-admin";
 //  startSession() servono solo se vuoi che si possa entrare anche dal modulo della videochiamata.
 // ============================================================================================
 
-// admin: può creare ed eliminare utenti (solo chi è in VIDEO_ORGANIZERS; non va nel cookie, si ricalcola ogni volta)
+// admin: può creare ed eliminare utenti (chi è in VIDEO_ORGANIZERS o un utente creato come amministratore;
+// non va nel cookie, si ricalcola ogni volta)
 export type VideoUser = { id: string; name: string; organizer: boolean; admin?: boolean };
 
 const COOKIE = "video_session";
@@ -53,10 +54,11 @@ export async function currentUser(): Promise<VideoUser | null> {
     if (typeof payload.id !== "string" || typeof payload.name !== "string") return null;
     const user: VideoUser = { id: payload.id, name: payload.name, organizer: payload.organizer === true };
     if (!user.organizer) return user;
-    // Un organizzatore tolto da VIDEO_ORGANIZERS, o un utente eliminato (o con la password cambiata), perde subito i poteri
+    // Un organizzatore tolto da VIDEO_ORGANIZERS, o un utente eliminato (o con la password cambiata), perde subito i poteri;
+    // un utente a cui si toglie "amministratore" smette subito di gestire gli utenti
     if (organizers().some((o) => o.id === user.id)) return { ...user, admin: true };
     const stored = (await storedUsers()).users.find((u) => userId(u.name) === user.id);
-    return stored && stored.key === payload.k ? user : null;
+    return stored && stored.key === payload.k ? { ...user, admin: stored.admin === true } : null;
   } catch {
     return null;
   }
@@ -123,15 +125,15 @@ export async function login(
   }
   const stored = (await storedUsers()).users.find((u) => lower(u.name) === lower(username));
   if (stored && (await passwordOk(password, stored))) {
-    return { user: { id: userId(stored.name), name: stored.name, organizer: true }, key: stored.key };
+    return { user: { id: userId(stored.name), name: stored.name, organizer: true, admin: stored.admin === true }, key: stored.key };
   }
   return { error: "Credenziali non valide", status: 401 };
 }
 
 // ---------- utenti creati dagli amministratori ----------
-// Salvati in app_settings come elenco JSON: { name, salt, hash, key, created_at }
+// Salvati in app_settings come elenco JSON: { name, salt, hash, key, admin, created_at }
 
-type StoredUser = { name: string; salt: string; hash: string; key: string; created_at: string };
+type StoredUser = { name: string; salt: string; hash: string; key: string; admin?: boolean; created_at: string };
 const USERS_KEY = "video_users";
 const MIN_PASSWORD = 8;
 const MAX_NAME = 40;
@@ -162,18 +164,25 @@ async function saveUsers(users: StoredUser[]) {
   return { error: error ? `Errore del database: ${error.message || error.code}` : undefined };
 }
 
-// Elenco per la pagina di gestione: gli amministratori (da VIDEO_ORGANIZERS) e gli utenti creati
-export async function listUsers() {
+// Elenco per la pagina di gestione: gli amministratori fissi (da VIDEO_ORGANIZERS) e gli utenti creati
+// (me: id di chi guarda, per non fargli eliminare o declassare sé stesso)
+export async function listUsers(me: string) {
   const { users, error } = await storedUsers();
   return {
     admins: organizers().map((o) => o.name),
-    users: users.map((u) => ({ name: u.name, created_at: u.created_at })),
+    users: users.map((u) => ({ name: u.name, admin: u.admin === true, me: userId(u.name) === me, created_at: u.created_at })),
     error,
   };
 }
 
-// Crea un utente o, se c'è già, gli cambia la password (le sue sessioni aperte scadono)
-export async function saveUser(rawName: unknown, rawPassword: unknown): Promise<{ error?: string; status?: number }> {
+const findUser = (users: StoredUser[], rawName: unknown) => {
+  const name = lower(clean(rawName).replace(/\s+/g, " "));
+  return users.find((u) => lower(u.name) === name);
+};
+
+// Crea un utente (admin: anche amministratore) o, se c'è già, gli cambia la password (le sue sessioni aperte
+// scadono; resta amministratore o no come prima)
+export async function saveUser(rawName: unknown, rawPassword: unknown, admin = false): Promise<{ error?: string; status?: number }> {
   const name = clean(rawName).replace(/\s+/g, " ");
   const password = clean(rawPassword);
   if (!name || name.length > MAX_NAME) return { error: `Scrivi un nome (massimo ${MAX_NAME} caratteri)`, status: 400 };
@@ -186,18 +195,36 @@ export async function saveUser(rawName: unknown, rawPassword: unknown): Promise<
   const salt = randomBytes(16).toString("base64");
   const hash = (await scryptAsync(password, salt, 32)).toString("base64");
   const old = users.find((u) => lower(u.name) === lower(name));
-  const user: StoredUser = { name, salt, hash, key: randomBytes(9).toString("base64url"), created_at: old?.created_at ?? new Date().toISOString() };
+  const user: StoredUser = {
+    name,
+    salt,
+    hash,
+    key: randomBytes(9).toString("base64url"),
+    admin: old ? old.admin === true : admin,
+    created_at: old?.created_at ?? new Date().toISOString(),
+  };
   const res = await saveUsers([...users.filter((u) => u !== old), user].sort((a, b) => a.name.localeCompare(b.name)));
   return res.error ? { error: res.error, status: 500 } : {};
 }
 
-export async function deleteUser(rawName: unknown): Promise<{ error?: string; status?: number }> {
-  const name = clean(rawName).replace(/\s+/g, " ");
+// Dà o toglie il ruolo di amministratore (non a sé stessi: così resta sempre chi può gestire gli utenti)
+export async function setUserAdmin(rawName: unknown, on: boolean, me: string): Promise<{ error?: string; status?: number }> {
   const { users, error } = await storedUsers();
   if (error) return { error, status: 500 };
-  const rest = users.filter((u) => lower(u.name) !== lower(name));
-  if (rest.length === users.length) return { error: "Utente non trovato", status: 404 };
-  const res = await saveUsers(rest);
+  const user = findUser(users, rawName);
+  if (!user) return { error: "Utente non trovato", status: 404 };
+  if (userId(user.name) === me) return { error: "Non puoi cambiare il tuo ruolo: chiedilo a un altro amministratore", status: 400 };
+  const res = await saveUsers(users.map((u) => (u === user ? { ...u, admin: on } : u)));
+  return res.error ? { error: res.error, status: 500 } : {};
+}
+
+export async function deleteUser(rawName: unknown, me: string): Promise<{ error?: string; status?: number }> {
+  const { users, error } = await storedUsers();
+  if (error) return { error, status: 500 };
+  const user = findUser(users, rawName);
+  if (!user) return { error: "Utente non trovato", status: 404 };
+  if (userId(user.name) === me) return { error: "Non puoi eliminare te stesso: chiedilo a un altro amministratore", status: 400 };
+  const res = await saveUsers(users.filter((u) => u !== user));
   return res.error ? { error: res.error, status: 500 } : {};
 }
 
