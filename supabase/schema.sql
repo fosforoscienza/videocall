@@ -5,7 +5,7 @@
 create extension if not exists pgcrypto;
 
 -- Impostazioni: accesso (libero, password, sala d'attesa), condivisione schermo, solo ascolto, co-organizzatori
--- e stanze di ogni chiamata. Non ci sono utenti: gli organizzatori sono in VIDEO_ORGANIZERS su Vercel,
+-- e stanze di ogni chiamata. Non ci sono utenti: gli organizzatori sono in VIDEO_ORGANIZERS su Coolify,
 -- i partecipanti scrivono solo il nome entrando dal link.
 create table if not exists public.app_settings (
   key         text primary key,

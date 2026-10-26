@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 import { isDemo } from "./demo-db";
+import { env, ENV_PLACE, supabaseUrl } from "./env";
 import { supabaseAdmin } from "./supabase-admin";
 import { currentUser, type VideoUser } from "./video-auth";
 import {
@@ -34,7 +35,7 @@ export function dbError(e: DbErr): string {
   const msg = e?.message ?? "";
   let host = "";
   try {
-    host = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").host;
+    host = new URL(supabaseUrl() ?? "").host;
   } catch {
     // indirizzo non valido: lo dice il caso "non riesco a raggiungere"
   }
@@ -44,29 +45,23 @@ export function dbError(e: DbErr): string {
   }
   if (e?.code === "42703" || e?.code === "PGRST204") return DB_UPDATE_NEEDED;
   if (e?.code === "42501" || /row-level security/i.test(msg)) {
-    return `Supabase blocca la scrittura${where}: in SUPABASE_SERVICE_ROLE_KEY serve la chiave service_role (o "secret"), non quella anon/publishable. Correggila su Vercel e fai Redeploy.`;
+    return `Supabase blocca la scrittura${where}: in SUPABASE_SERVICE_ROLE_KEY serve la chiave service_role (o "secret"), non quella anon/publishable. Correggila ${ENV_PLACE}.`;
   }
   if (/invalid api key|no api key|jwt|unauthorized/i.test(msg) || e?.code === "PGRST301") {
-    return `Supabase rifiuta la chiave${where}: SUPABASE_SERVICE_ROLE_KEY deve essere la chiave service_role (o "secret") dello stesso progetto di NEXT_PUBLIC_SUPABASE_URL. Correggila su Vercel e fai Redeploy.`;
+    return `Supabase rifiuta la chiave${where}: SUPABASE_SERVICE_ROLE_KEY deve essere la chiave service_role (o "secret") dello stesso progetto di SUPABASE_URL. Correggila ${ENV_PLACE}.`;
   }
   if (/fetch failed|enotfound|getaddrinfo|network|invalid url|requested path is invalid/i.test(msg)) {
-    return `Non riesco a raggiungere Supabase${where}: NEXT_PUBLIC_SUPABASE_URL deve essere tipo https://xxxx.supabase.co. Correggila su Vercel e fai Redeploy.`;
+    return `Non riesco a raggiungere Supabase${where}: SUPABASE_URL deve essere tipo https://xxxx.supabase.co. Correggila ${ENV_PLACE}.`;
   }
   return `Errore del database${where}: ${msg || e?.code || "sconosciuto"}`;
 }
 
 const CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
 
-// Toglie spazi, virgolette e "NOME=" incollati per errore insieme al valore su Vercel
-function envValue(name: string) {
-  const v = process.env[name]?.trim().replace(new RegExp(`^${name}\\s*=\\s*`), "").replace(/^["']|["']$/g, "").trim();
-  return v || undefined;
-}
-
 function config() {
-  const raw = envValue("LIVEKIT_URL");
-  const key = envValue("LIVEKIT_API_KEY");
-  const secret = envValue("LIVEKIT_API_SECRET");
+  const raw = env("LIVEKIT_URL");
+  const key = env("LIVEKIT_API_KEY");
+  const secret = env("LIVEKIT_API_SECRET");
   if (!raw || !key || !secret) return null;
   // Va bene anche l'indirizzo con https://: il browser si collega sempre con wss://
   const url = raw.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://").replace(/\/+$/, "");
@@ -74,12 +69,14 @@ function config() {
 }
 
 // Controlla che LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET funzionino davvero,
-// così l'organizzatore legge cosa correggere su Vercel invece di un generico "connessione persa".
+// così l'organizzatore legge cosa correggere (e dove) invece di un generico "connessione persa".
+export const LIVEKIT_MISSING = `Videochiamate non configurate: mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET ${ENV_PLACE}.`;
+
 export async function checkLiveKit(): Promise<string | null> {
   const c = config();
-  if (!c) return "Videochiamate non configurate: mancano LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET su Vercel.";
+  if (!c) return LIVEKIT_MISSING;
   if (/cloud\.livekit\.io/.test(c.url) || !/^wss?:\/\/[^/\s]+$/.test(c.url)) {
-    return `LIVEKIT_URL non è giusto ("${c.url}"): deve essere l'indirizzo del progetto, tipo wss://nome-progetto-xxxx.livekit.cloud (lo trovi in LiveKit Cloud → Settings → Project), non quello della pagina del browser.`;
+    return `LIVEKIT_URL non è giusto ("${c.url}"): deve essere l'indirizzo del progetto, tipo wss://nome-progetto-xxxx.livekit.cloud (lo trovi in LiveKit Cloud → Settings → Project), non quello della pagina del browser. Correggilo ${ENV_PLACE}.`;
   }
   try {
     await Promise.race([
@@ -90,9 +87,9 @@ export async function checkLiveKit(): Promise<string | null> {
   } catch (e) {
     const status = (e as { status?: number }).status;
     if (status === 401 || status === 403) {
-      return "LIVEKIT_API_KEY o LIVEKIT_API_SECRET non sono giusti (o sono di un altro progetto LiveKit): ricopiali da LiveKit Cloud → Settings → API Keys.";
+      return `LIVEKIT_API_KEY o LIVEKIT_API_SECRET non sono giusti (o sono di un altro progetto LiveKit): ricopiali da LiveKit Cloud → Settings → API Keys e incollali ${ENV_PLACE}.`;
     }
-    return `Non riesco a raggiungere il server LiveKit ${c.url}: controlla LIVEKIT_URL su Vercel.`;
+    return `Non riesco a raggiungere il server LiveKit ${c.url}: controlla LIVEKIT_URL ${ENV_PLACE}.`;
   }
 }
 

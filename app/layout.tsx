@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Footer />
         </div>
         {/* Umami (analytics.fosforoscienza.it): statistiche anonime senza cookie. data-domains limita la
-            misura al dominio di produzione, così le anteprime e il progetto Vercel non contano. */}
+            misura al dominio di produzione, così le prove in locale e gli indirizzi di prova non contano. */}
         <Script
           src="https://analytics.fosforoscienza.it/fs.js"
           data-website-id="76f6fe7f-ad31-4ca5-9d54-298710674f50"

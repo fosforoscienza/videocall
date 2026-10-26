@@ -31,7 +31,7 @@ Audio e video passano da **LiveKit Cloud**; chiamate, sala d'attesa e impostazio
 | --- | --- | --- |
 | [LiveKit Cloud](https://cloud.livekit.io) | audio e video | piano gratuito per iniziare |
 | [Supabase](https://supabase.com) | database | piano gratuito |
-| [Vercel](https://vercel.com) (o un altro hosting Next.js) | pubblicare l'app | piano gratuito |
+| [Coolify](https://coolify.io) su un server (es. Debian) | pubblicare l'app | gratis (paghi solo il server) |
 
 Node.js 20 o più recente per provarla sul computer.
 
@@ -39,7 +39,7 @@ Node.js 20 o più recente per provarla sul computer.
 
 ## Modalità demo (senza database)
 
-Per provare l'app o lavorare sulla grafica non serve Supabase: se mancano `NEXT_PUBLIC_SUPABASE_URL` o
+Per provare l'app o lavorare sulla grafica non serve Supabase: se mancano `SUPABASE_URL` o
 `SUPABASE_SERVICE_ROLE_KEY` l'app usa un database finto tenuto in memoria ([`lib/demo-db.ts`](lib/demo-db.ts)).
 
 - Organizzatore: **demo** / **demo** (se `VIDEO_ORGANIZERS` è vuota). `SESSION_SECRET` non serve.
@@ -58,14 +58,21 @@ per esempio `video.tuosito.it`, e dal sito si mette un link o un pulsante.
 2. **LiveKit**: crea un progetto su LiveKit Cloud. Ti servono l'URL (`wss://...livekit.cloud`, in *Settings → Project*)
    e una API Key con il suo segreto (*Settings → API Keys*).
 3. **Codice su GitHub**: crea un repository nuovo e caricaci il contenuto di questa cartella.
-4. **Vercel**: *Add New → Project*, scegli il repository, e in *Environment Variables* inserisci le variabili di
-   [`.env.example`](.env.example):
-   - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → *Project Settings → API*)
-   - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
-   - `SESSION_SECRET`: una frase lunga e casuale
-   - `VIDEO_ORGANIZERS`: gli organizzatori, come `mario:password1;anna:password2`
-5. *Deploy*. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata (scegli libero, password o sala d'attesa) e condividi il link.
-6. (Facoltativo) In Vercel → *Settings → Domains* collega un sottodominio come `video.tuosito.it`.
+4. **Coolify**: *+ New → Application → Public/Private Repository*, scegli il repository e il ramo `main`.
+   - *Build Pack*: **Dockerfile** (c'è già nel repository), *Ports Exposes*: **3000**.
+   - *Domains*: l'indirizzo dell'app, es. `https://video.tuosito.it` (Coolify fa da solo il certificato HTTPS;
+     il DNS del sottodominio deve puntare all'IP del server).
+   - *Environment Variables*: inserisci le variabili di [`.env.example`](.env.example). Non serve spuntare
+     *Build Variable*: l'app le legge mentre gira.
+     - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → *Project Settings → API*;
+       va bene anche il vecchio nome `NEXT_PUBLIC_SUPABASE_URL`)
+     - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
+     - `SESSION_SECRET`: una frase lunga e casuale (almeno 16 caratteri)
+     - `VIDEO_ORGANIZERS`: gli organizzatori, come `mario:password1;anna:password2`
+5. *Deploy* (dopo ogni cambio di variabili: *Redeploy*). Poi apri `https://video.tuosito.it/api/health`:
+   se tutto è a posto risponde `"ok": true`, altrimenti dice quale variabile manca o è sbagliata
+   (senza mostrarne il valore).
+6. Apri l'indirizzo dell'app, entra come organizzatore, avvia la videochiamata (scegli libero, password o sala d'attesa) e condividi il link.
 
 Per provarla sul computer: copia `.env.example` in `.env.local`, compila i valori, poi `npm install` e `npm run dev`
 e apri http://localhost:3000.
@@ -180,4 +187,5 @@ supabase/schema.sql           tabelle
 - Una sola videochiamata in corso alla volta (più quelle programmate).
 - Le chiavi segrete (`SUPABASE_SERVICE_ROLE_KEY`, `LIVEKIT_API_SECRET`, `SESSION_SECRET`) non vanno mai nel codice né
   in variabili che iniziano con `NEXT_PUBLIC_`.
-- Se l'organizzatore vede un errore su LiveKit, il messaggio dice quale variabile correggere su Vercel.
+- Se l'organizzatore vede un errore su LiveKit o Supabase, il messaggio dice quale variabile correggere su Coolify;
+  `/api/health` mostra tutti i controlli insieme.

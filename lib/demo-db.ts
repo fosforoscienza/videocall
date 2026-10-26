@@ -1,16 +1,17 @@
 import "server-only";
 import { randomUUID } from "crypto";
+import { env, supabaseUrl } from "./env";
 
 // ============================================================================================
 //  MODALITÀ DEMO — database finto, tenuto in memoria, per provare l'app senza Supabase.
 //
-//  Si attiva da sola quando mancano NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY.
+//  Si attiva da sola quando mancano SUPABASE_URL (o NEXT_PUBLIC_SUPABASE_URL) o SUPABASE_SERVICE_ROLE_KEY.
 //  Imita solo la parte del client Supabase usata da lib/video.ts e lib/video-auth.ts.
-//  I dati si perdono a ogni riavvio del server (e su Vercel ogni tanto, quando la funzione riparte):
+//  I dati si perdono a ogni riavvio del server (e a ogni Redeploy su Coolify):
 //  va bene per lavorare sulla grafica, non per le videochiamate vere.
 // ============================================================================================
 
-export const isDemo = () => !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const isDemo = () => !supabaseUrl() || !env("SUPABASE_SERVICE_ROLE_KEY");
 
 // Credenziali di prova (valgono solo in modalità demo)
 export const DEMO_ORGANIZER = { name: "demo", password: "demo" };
