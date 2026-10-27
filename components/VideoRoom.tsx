@@ -289,8 +289,8 @@ export default function VideoRoom({
   });
   // Telefono: i comandi secondari stanno nel menu "Altro"
   const [moreOpen, setMoreOpen] = useState(false);
-  // Avviso: schermo o lavagna non disponibili perché un'altra persona sta condividendo
-  const [blocked, setBlocked] = useState<"screen" | "board" | null>(null);
+  // Avviso: schermo o lavagna non disponibili perché un'altra persona sta condividendo (o la lavagna è aperta)
+  const [blocked, setBlocked] = useState<"screen" | "board" | "wb-open" | null>(null);
   const [notice, setNotice] = useState(initialNotice);
   // Vero mentre spengo io il mio microfono: se si spegne in altro modo è stato l'organizzatore
   const selfMuting = useRef(false);
@@ -835,6 +835,10 @@ export default function VideoRoom({
     if (lastScreen.current !== screenSid) setBlocked(null);
     lastScreen.current = screenSid;
   }, [screenSid]);
+  // Chiusa la lavagna, l'avviso "lavagna aperta" non serve più
+  useEffect(() => {
+    if (!boardOpen) setBlocked((b) => (b === "wb-open" ? null : b));
+  }, [boardOpen]);
 
   const sendBoard = useCallback(
     (m: BoardMsg) => {
@@ -1045,8 +1049,8 @@ export default function VideoRoom({
   };
   const toggleScreen = async () => {
     setMediaError("");
-    if (!sharing && otherSharer) {
-      setBlocked("screen");
+    if (!sharing && (otherSharer || boardOpen)) {
+      setBlocked(otherSharer ? "screen" : "wb-open");
       return;
     }
     try {
@@ -1600,8 +1604,29 @@ export default function VideoRoom({
           pipWin.document.body
         )}
 
+      {/* Si chiude da solo quando la lavagna viene chiusa */}
+      {blocked === "wb-open" && boardOpen && (
+        <div className="modal-backdrop call-panel-backdrop" onClick={() => setBlocked(null)}>
+          <div className="card modal call-sheet" role="alertdialog" onClick={(e) => e.stopPropagation()}>
+            <div className="topbar">
+              <h2 className="title">🧑‍🏫 Lavagna aperta</h2>
+              <button className="call-close" onClick={() => setBlocked(null)} aria-label="Chiudi">
+                ✕
+              </button>
+            </div>
+            <p>
+              La lavagna è aperta: per condividere il tuo schermo{" "}
+              {wbManage ? "chiudi prima la lavagna." : "aspetta che l'organizzatore la chiuda."}
+            </p>
+            <button className="btn btn-gold" onClick={() => setBlocked(null)}>
+              Ho capito
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Si chiude da solo quando l'altra persona smette di condividere */}
-      {blocked && otherSharer && (
+      {blocked && blocked !== "wb-open" && otherSharer && (
         <div className="modal-backdrop call-panel-backdrop" onClick={() => setBlocked(null)}>
           <div className="card modal call-sheet" role="alertdialog" onClick={(e) => e.stopPropagation()}>
             <div className="topbar">
