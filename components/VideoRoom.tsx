@@ -289,6 +289,8 @@ export default function VideoRoom({
   });
   // Telefono: i comandi secondari stanno nel menu "Altro"
   const [moreOpen, setMoreOpen] = useState(false);
+  // Avviso: schermo o lavagna non disponibili perché un'altra persona sta condividendo
+  const [blocked, setBlocked] = useState<"screen" | "board" | null>(null);
   const [notice, setNotice] = useState(initialNotice);
   // Vero mentre spengo io il mio microfono: se si spegne in altro modo è stato l'organizzatore
   const selfMuting = useRef(false);
@@ -830,6 +832,7 @@ export default function VideoRoom({
       setBoardVersion((v) => v + 1);
     }
     if (!screenSid) setDrawing(false);
+    if (lastScreen.current !== screenSid) setBlocked(null);
     lastScreen.current = screenSid;
   }, [screenSid]);
 
@@ -996,6 +999,8 @@ export default function VideoRoom({
   const sharing = lp.isScreenShareEnabled;
   // Schermo condiviso (dall'organizzatore): va in grande, le persone in riquadri piccoli a lato
   const screen = screenNow;
+  // Schermo condiviso da un'altra persona: finché non smette, niente altra condivisione né lavagna
+  const otherSharer = screen && !screen.p.isLocal ? screen.p : null;
   // Schermo: gli organizzatori sempre, gli altri se l'organizzatore l'ha permesso a tutti (permesso dato dal server)
   const sources = lp.permissions?.canPublishSources ?? [];
   const mayShare = !!host || (!listening && (sources.length === 0 || sources.includes(3 /* SCREEN_SHARE */)));
@@ -1004,7 +1009,11 @@ export default function VideoRoom({
   // Lavagna: la aprono e la chiudono gli organizzatori, che scelgono se possono scriverci tutti
   const wbManage = isHost(lp);
   const wbWrite = boardOpen && (wbManage || wb.current.mode === "all");
-  const toggleBoard = () => (boardOpen ? boardState(false, wb.current.mode) : openBoard());
+  const toggleBoard = () => {
+    if (boardOpen) boardState(false, wb.current.mode);
+    else if (otherSharer) setBlocked("board");
+    else openBoard();
+  };
 
   const toggleMic = async () => {
     setMediaError("");
@@ -1036,6 +1045,10 @@ export default function VideoRoom({
   };
   const toggleScreen = async () => {
     setMediaError("");
+    if (!sharing && otherSharer) {
+      setBlocked("screen");
+      return;
+    }
     try {
       if (sharing) await lp.setScreenShareEnabled(false);
       else {
@@ -1149,12 +1162,19 @@ export default function VideoRoom({
     ("documentPictureInPicture" in window ||
       document.pictureInPictureEnabled ||
       "webkitSetPresentationMode" in HTMLVideoElement.prototype);
-  // Nella finestrella: chi è in grande (o chi ha parlato per ultimo) e fino a 3 riquadri piccoli
-  const pipFocus = mainP ?? all.find((p) => p.identity === lastSpeaker && !p.isLocal) ?? all.find((p) => !p.isLocal) ?? lp;
-  const pipOthers = all
-    .filter((p) => p !== pipFocus)
-    .sort((a, b) => Number(b.isSpeaking) - Number(a.isSpeaking))
-    .slice(0, 3);
+  // Nella finestrella: chi è in grande (o chi ha parlato per ultimo) e fino a 3 riquadri piccoli.
+  // Con schermo o lavagna in grande, sotto c'è il volto di chi parla (o di chi condivide), più grande degli altri
+  const pipScreen = boardOpen || !!screen?.pub?.track;
+  const pipFocus =
+    mainP ??
+    all.find((p) => p.identity === lastSpeaker && !p.isLocal) ??
+    (screen && !screen.p.isLocal ? screen.p : null) ??
+    all.find((p) => !p.isLocal) ??
+    lp;
+  const pipOthers = [
+    ...(pipScreen ? [pipFocus] : []),
+    ...all.filter((p) => p !== pipFocus).sort((a, b) => Number(b.isSpeaking) - Number(a.isSpeaking)),
+  ].slice(0, 3);
 
   // Schermo stretto: se i comandi secondari sono più di uno vanno nel menu "Altro"
   const compact = w < 600;
@@ -1553,7 +1573,7 @@ export default function VideoRoom({
               )}
             </div>
             {pipOthers.length > 0 && (
-              <div className="pip-strip">
+              <div className={`pip-strip ${pipScreen ? "with-screen" : ""}`}>
                 {pipOthers.map((p) => (
                   <Tile key={p.identity} p={p} mirror={p.isLocal && facing === "user"} />
                 ))}
@@ -1579,6 +1599,27 @@ export default function VideoRoom({
           </div>,
           pipWin.document.body
         )}
+
+      {/* Si chiude da solo quando l'altra persona smette di condividere */}
+      {blocked && otherSharer && (
+        <div className="modal-backdrop call-panel-backdrop" onClick={() => setBlocked(null)}>
+          <div className="card modal call-sheet" role="alertdialog" onClick={(e) => e.stopPropagation()}>
+            <div className="topbar">
+              <h2 className="title">🖥️ Schermo già condiviso</h2>
+              <button className="call-close" onClick={() => setBlocked(null)} aria-label="Chiudi">
+                ✕
+              </button>
+            </div>
+            <p>
+              <strong>{otherSharer.name || otherSharer.identity}</strong> sta condividendo lo schermo. Per{" "}
+              {blocked === "board" ? "aprire la lavagna" : "condividere il tuo schermo"} aspetta che interrompa la condivisione.
+            </p>
+            <button className="btn btn-gold" onClick={() => setBlocked(null)}>
+              Ho capito
+            </button>
+          </div>
+        </div>
+      )}
 
       {chatOpen && (
         <CallChat

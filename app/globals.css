@@ -1887,6 +1887,18 @@ video.mirror {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
+/* Con schermo o lavagna in grande: il primo riquadro (chi parla) è più grande */
+.pip-strip.with-screen {
+  height: 120px;
+  display: flex;
+}
+.pip-strip.with-screen > .call-tile {
+  flex: 1;
+  min-width: 0;
+}
+.pip-strip.with-screen > .call-tile:first-child {
+  flex: 2;
+}
 .pip-strip .call-avatar {
   width: 36px;
   font-size: 1rem;
