@@ -20,7 +20,11 @@ oppure si copia dentro un altro sito fatto con Next.js.
   da scrivere e spostare; l'organizzatore la apre per tutti e sceglie se possono scriverci **tutti** o **solo gli organizzatori**.
   Si salva come immagine.
 - **Chat** laterale, **co-organizzatori** (se l'organizzatore esce il ruolo passa da solo), silenzia uno o tutti.
-- Griglia senza spazi vuoti, persona **fissata in grande**, vista "**chi parla in grande**", più pagine con tante persone.
+- Griglia senza spazi vuoti, persona **fissata in grande**, vista "**chi parla in grande**", più pagine con tante persone
+  (si va da soli alla pagina di chi parla; chi cambia pagina per guardare gli altri ci resta 15 secondi).
+- **Sondaggi**: l'organizzatore li prepara anche prima (pure per le chiamate programmate), li apre e li chiude quando
+  vuole. **Segreti**: nessuno vede chi ha votato cosa e i risultati li vedono solo gli organizzatori finché non li
+  mostrano a tutti. **Palesi**: tutti vedono i risultati con i nomi. Salvati in `app_settings` (nessuna tabella nuova).
 - **Finestrella** (Picture-in-Picture) quando si cambia scheda: Chrome/Edge da computer la aprono da soli se la pagina
   usa microfono o fotocamera; altrove (Safari, iPhone, iPad, webinar) con il pulsante della finestrella.
 - Ottimizzata per telefono e iPad.

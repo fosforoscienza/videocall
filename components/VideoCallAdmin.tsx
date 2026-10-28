@@ -9,6 +9,7 @@ import type { HostCall } from "@/lib/useHostCall";
 import { callSlug, DEFAULT_ACCESS, shareText, type BreakoutRoom, type CallAccess } from "@/lib/video-types";
 import AccessPicker from "./AccessPicker";
 import { fetchRoomTicket } from "@/lib/breakout-client";
+import { CallPolls } from "./Polls";
 
 // Scheda Video dell'organizzatore: avvia la videochiamata, condivide il link, decide chi entra
 // (children: sezioni in più in fondo alla pagina, es. gli utenti per gli amministratori)
@@ -181,6 +182,13 @@ export default function VideoCallAdmin({ host, children }: { host: HostCall; chi
         )}
         {error && <p className="error">{error}</p>}
       </section>
+
+      {call && (
+        <section className="card section">
+          <h3>📊 Sondaggi</h3>
+          <CallPolls code={call.code} live />
+        </section>
+      )}
 
       <ScheduledCalls host={host} />
 

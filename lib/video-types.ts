@@ -65,7 +65,41 @@ export const BREAKOUT_TOPIC = "breakout";
 export const MAX_BREAKOUTS = 20;
 export const MAX_BREAKOUT_NAME = 40;
 
-export type HostAction = "accept" | "reject" | "remove" | "mute" | "mute_all" | "accept_all" | "make_cohost" | "remove_cohost";
+// ---------- sondaggi ----------
+// Li prepara l'organizzatore (anche prima della chiamata) e li apre e chiude quando vuole.
+// Segreti: i risultati (solo i numeri, senza nomi) li vede chi gestisce la chiamata, finché non li mostra a tutti.
+// Palesi: tutti vedono i risultati con il nome di chi ha votato e cosa.
+// draft = preparato (i partecipanti non lo vedono), open = si vota, closed = chiuso
+export type PollStatus = "draft" | "open" | "closed";
+export type Poll = {
+  id: string;
+  question: string;
+  options: string[];
+  secret: boolean;
+  status: PollStatus;
+  // risultati mostrati a tutti (conta solo per i sondaggi segreti)
+  shown: boolean;
+};
+// Sondaggio visto da chi apre il pannello: il suo voto e, se può vederli, i risultati
+export type PollView = Poll & {
+  mine: number | null;
+  // quante persone hanno votato
+  voters: number;
+  counts?: number[];
+  // solo nei sondaggi palesi: chi ha scelto ogni opzione
+  names?: string[][];
+};
+export type PollsState = { polls: PollView[]; manager: boolean };
+export type PollAction = "create" | "update" | "delete" | "open" | "close" | "show" | "hide";
+export const POLL_TOPIC = "poll";
+export const MAX_POLLS = 30;
+export const MAX_POLL_OPTIONS = 10;
+export const MAX_POLL_QUESTION = 200;
+export const MAX_POLL_OPTION = 100;
+// Risultati visibili a tutti: sempre nei palesi, nei segreti solo quando l'organizzatore li mostra
+export const pollPublic = (p: Poll) => !p.secret || p.shown;
+
+export type HostAction ="accept" | "reject" | "remove" | "mute" | "mute_all" | "accept_all" | "make_cohost" | "remove_cohost";
 
 // Link della videochiamata: /call/nome-della-chiamata-codice. Il nome serve solo a renderlo leggibile;
 // conta il codice finale, così i link restano validi anche se la chiamata viene rinominata.

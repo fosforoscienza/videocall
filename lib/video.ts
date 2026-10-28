@@ -716,6 +716,15 @@ export async function notifyBreakouts(callId: string, roomIds: string[]) {
   );
 }
 
+// Avvisa chi è collegato, in plenaria e in tutte le stanze aperte (es. sondaggi cambiati): ognuno rilegge lo stato
+export async function notifyCall(callId: string, topic: string, payload: unknown) {
+  const svc = rooms();
+  if (!svc) return;
+  const data = new TextEncoder().encode(JSON.stringify(payload));
+  const names = await allRoomNames(callId);
+  await Promise.all(names.map((n) => svc.sendData(n, data, DataPacket_Kind.RELIABLE, { topic }).catch(() => {})));
+}
+
 // Chi è collegato in plenaria ("main") e in ogni stanza (per il pannello dell'organizzatore)
 export async function breakoutPresence(callId: string, open: BreakoutRoom[]): Promise<Record<string, string[]>> {
   const svc = rooms();

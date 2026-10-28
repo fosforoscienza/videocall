@@ -91,6 +91,7 @@ class LocalQuery implements PromiseLike<Result> {
   private filters: ((r: Row) => boolean)[] = [];
   private sort: { column: string; ascending: boolean } | null = null;
   private mode: "many" | "single" | "maybe" = "many";
+  private slice: [number, number] | null = null;
 
   constructor(private table: string) {}
 
@@ -136,6 +137,10 @@ class LocalQuery implements PromiseLike<Result> {
   }
   order(column: string, opts?: { ascending?: boolean }) {
     this.sort = { column, ascending: opts?.ascending !== false };
+    return this;
+  }
+  range(from: number, to: number) {
+    this.slice = [from, to + 1];
     return this;
   }
   single() {
@@ -197,6 +202,7 @@ class LocalQuery implements PromiseLike<Result> {
       const { column, ascending } = this.sort;
       out = [...out].sort((a, b) => String(a[column] ?? "").localeCompare(String(b[column] ?? "")) * (ascending ? 1 : -1));
     }
+    if (this.slice) out = out.slice(...this.slice);
     const cols = this.columns && this.columns !== "*" ? this.columns.split(",").map((c) => c.trim()) : null;
     const data = out.map((r) => (cols ? Object.fromEntries(cols.map((c) => [c, r[c] ?? null])) : { ...r }));
 
