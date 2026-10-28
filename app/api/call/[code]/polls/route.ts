@@ -38,12 +38,12 @@ export async function POST(req: Request, { params }: Ctx) {
   const ctx = await context((await params).code);
   if ("error" in ctx) return ctx.error;
   const { call, who, manager } = ctx;
-  const body = (await req.json().catch(() => null)) as { action?: unknown; id?: unknown; choice?: unknown; poll?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { action?: unknown; id?: unknown; choices?: unknown; poll?: unknown } | null;
   const action = body?.action;
 
   if (action === "vote") {
     if (!isLive(call)) return json({ error: "La videochiamata non è ancora iniziata" }, 400);
-    const res = await vote(call.id, body?.id, who, body?.choice);
+    const res = await vote(call.id, body?.id, who, body?.choices);
     if (res.error) return json({ error: res.error }, 400);
     // Un voto segreto cambia qualcosa solo per chi vede i risultati: gli altri non rileggono
     await notifyCall(call.id, POLL_TOPIC, { kind: "vote", secret: res.secret });

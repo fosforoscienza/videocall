@@ -17,7 +17,8 @@ import {
 //  SONDAGGI — salvati in app_settings, come le altre impostazioni delle chiamate (niente tabelle nuove):
 //    - "video_polls:<chiamata>": i sondaggi della chiamata (li cambia solo chi la gestisce)
 //    - "video_vote:<chiamata>:<sondaggio>:<identità>": un voto per riga, così chi vota nello stesso
-//      momento non cancella il voto degli altri; votando di nuovo si cambia il proprio voto
+//      momento non cancella il voto degli altri; votando di nuovo si cambia il proprio voto.
+//      Nei sondaggi a più risposte il voto è l'elenco delle risposte scelte; togliendole tutte il voto sparisce.
 // ============================================================================================
 
 const pollsKey = (callId: string) => `video_polls:${callId}`;
@@ -31,11 +32,11 @@ const PAGE = 1000;
 const cleanText = (v: unknown, max: number) => String(v ?? "").normalize("NFC").trim().replace(/\s+/g, " ").slice(0, max);
 const newId = () => Array.from(randomBytes(8), (b) => ID_CHARS[b % ID_CHARS.length]).join("");
 
-type Vote = { poll: string; choice: number; identity: string; name: string };
+type Vote = { poll: string; choices: number[]; identity: string; name: string };
 
 // Domanda, risposte e tipo scritti dall'organizzatore: controllati qui
-export function cleanPollInput(raw: unknown): Pick<Poll, "question" | "options" | "secret"> | { error: string } {
-  const r = (raw && typeof raw === "object" ? raw : {}) as { question?: unknown; options?: unknown; secret?: unknown };
+export function cleanPollInput(raw: unknown): Pick<Poll, "question" | "options" | "secret" | "multiple"> | { error: string } {
+  const r = (raw && typeof raw === "object" ? raw : {}) as { question?: unknown; options?: unknown; secret?: unknown; multiple?: unknown };
   const question = cleanText(r.question, MAX_POLL_QUESTION);
   if (!question) return { error: "Scrivi la domanda" };
   const options = (Array.isArray(r.options) ? r.options : [])
@@ -43,7 +44,7 @@ export function cleanPollInput(raw: unknown): Pick<Poll, "question" | "options" 
     .filter(Boolean)
     .slice(0, MAX_POLL_OPTIONS);
   if (options.length < 2) return { error: "Servono almeno due risposte" };
-  return { question, options, secret: r.secret === true };
+  return { question, options, secret: r.secret === true, multiple: r.multiple === true };
 }
 
 export async function getPolls(callId: string): Promise<Poll[]> {
@@ -85,9 +86,11 @@ async function listVotes(callId: string): Promise<Vote[]> {
     if (error) break;
     for (const row of rows) {
       try {
-        const v = JSON.parse(row.value) as Partial<Vote>;
-        if (typeof v.poll === "string" && Number.isInteger(v.choice) && typeof v.identity === "string") {
-          votes.push({ poll: v.poll, choice: v.choice as number, identity: v.identity, name: typeof v.name === "string" ? v.name : "" });
+        // (i voti salvati prima delle risposte multiple hanno una sola "choice")
+        const v = JSON.parse(row.value) as Partial<Vote> & { choice?: unknown };
+        const choices = Array.isArray(v.choices) ? v.choices : [v.choice];
+        if (typeof v.poll === "string" && typeof v.identity === "string") {
+          votes.push({ poll: v.poll, choices: choices.filter(Number.isInteger) as number[], identity: v.identity, name: typeof v.name === "string" ? v.name : "" });
         }
       } catch {
         // voto non valido: ignorato
@@ -105,28 +108,37 @@ export async function pollsFor(callId: string, identity: string, manager: boolea
   if (!polls.length) return [];
   const votes = await listVotes(callId);
   return polls.map((p) => {
-    const given = votes.filter((v) => v.poll === p.id && v.choice >= 0 && v.choice < p.options.length);
-    const view: PollView = { ...p, mine: given.find((v) => v.identity === identity)?.choice ?? null, voters: given.length };
+    // Solo le risposte che esistono (e una sola, se il sondaggio non è a più risposte)
+    const given = votes
+      .filter((v) => v.poll === p.id)
+      .map((v) => ({ ...v, choices: v.choices.filter((c) => c >= 0 && c < p.options.length).slice(0, p.multiple ? undefined : 1) }))
+      .filter((v) => v.choices.length > 0);
+    const view: PollView = { ...p, mine: given.find((v) => v.identity === identity)?.choices ?? [], voters: given.length };
     if (manager || pollPublic(p)) {
-      view.counts = p.options.map((_, i) => given.filter((v) => v.choice === i).length);
+      const chose = (i: number) => given.filter((v) => v.choices.includes(i));
+      view.counts = p.options.map((_, i) => chose(i).length);
       // Nomi: nei palesi a tutti, nei segreti solo a organizzatori e co-organizzatori (anche dopo aver mostrato i risultati)
-      if (manager || !p.secret) view.names = p.options.map((_, i) => given.filter((v) => v.choice === i).map((v) => v.name));
+      if (manager || !p.secret) view.names = p.options.map((_, i) => chose(i).map((v) => v.name));
     }
     return view;
   });
 }
 
-export async function vote(callId: string, pollId: unknown, who: Participant, choice: unknown) {
+// choices: le risposte scelte (una sola se il sondaggio non è a più risposte; vuoto = tolgo il mio voto)
+export async function vote(callId: string, pollId: unknown, who: Participant, raw: unknown) {
   const poll = (await getPolls(callId)).find((p) => p.id === pollId);
   if (!poll) return { error: "Questo sondaggio non c'è più" };
   if (poll.status !== "open") return { error: "Il sondaggio è chiuso" };
-  if (typeof choice !== "number" || !Number.isInteger(choice) || choice < 0 || choice >= poll.options.length) {
-    return { error: "Scegli una risposta" };
-  }
-  const value: Vote = { poll: poll.id, choice, identity: who.identity, name: who.name };
-  const { error } = await supabaseAdmin()
-    .from("app_settings")
-    .upsert({ key: `${votePrefix(callId, poll.id)}${who.identity}`, value: JSON.stringify(value), updated_at: new Date().toISOString() });
+  const list = Array.isArray(raw) ? raw : [];
+  const valid = (c: unknown): c is number => typeof c === "number" && Number.isInteger(c) && c >= 0 && c < poll.options.length;
+  if (!list.every(valid) || list.length > poll.options.length) return { error: "Scelta non valida" };
+  const choices = [...new Set(list)].sort((a, b) => a - b);
+  if (!poll.multiple && choices.length !== 1) return { error: "Scegli una risposta" };
+  const key = `${votePrefix(callId, poll.id)}${who.identity}`;
+  const value: Vote = { poll: poll.id, choices, identity: who.identity, name: who.name };
+  const { error } = choices.length
+    ? await supabaseAdmin().from("app_settings").upsert({ key, value: JSON.stringify(value), updated_at: new Date().toISOString() })
+    : await supabaseAdmin().from("app_settings").delete().eq("key", key);
   return { error: error ? dbError(error) : undefined, secret: poll.secret };
 }
 

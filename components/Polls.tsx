@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_POLL_OPTION, MAX_POLL_OPTIONS, MAX_POLL_QUESTION, type PollAction, type PollView, type PollsState } from "@/lib/video-types";
 
-type PollInput = { question: string; options: string[]; secret: boolean; open?: boolean };
+type PollInput = { question: string; options: string[]; secret: boolean; multiple: boolean; open?: boolean };
 
 export type PollsHook = {
   state: PollsState | null;
@@ -13,7 +13,8 @@ export type PollsHook = {
   // avviso dal server (nella stanza): rilegge i sondaggi
   nudge: (payload?: unknown) => void;
   act: (action: PollAction, id?: string, poll?: PollInput) => Promise<boolean>;
-  vote: (id: string, choice: number) => Promise<boolean>;
+  // risposte scelte (vuoto = tolgo il voto, solo nei sondaggi a più risposte)
+  vote: (id: string, choices: number[]) => Promise<boolean>;
 };
 
 // Sondaggi di una chiamata: letti all'apertura, ogni `every` ms (0 = mai) e quando il server avvisa
@@ -81,13 +82,13 @@ export function usePolls(code: string | undefined, enabled = true, every = 15000
     [code]
   );
   const act = useCallback((action: PollAction, id?: string, poll?: PollInput) => send({ action, id, poll }), [send]);
-  const vote = useCallback((id: string, choice: number) => send({ action: "vote", id, choice }), [send]);
+  const vote = useCallback((id: string, choices: number[]) => send({ action: "vote", id, choices }), [send]);
 
   return { state, busy, error, load, nudge, act, vote };
 }
 
 // Sondaggi da votare (aperti, senza il mio voto): per il numerino sul pulsante
-export const pollsToVote = (s: PollsState | null) => s?.polls.filter((p) => p.status === "open" && p.mine === null).length ?? 0;
+export const pollsToVote = (s: PollsState | null) => s?.polls.filter((p) => p.status === "open" && !p.mine.length).length ?? 0;
 
 // Novità già mostrate a questo partecipante (sondaggio aperto, risultati mostrati), per chiamata.
 // Restano per tutta la visita della pagina: spostandosi tra le stanze non si ripresentano.
@@ -110,7 +111,7 @@ export function pollToShow(code: string, s: PollsState | null): { id: string; re
     if (p.status === "open") {
       if (!seen.has(openKey)) {
         seen.add(openKey);
-        if (p.mine === null && !show) show = { id: p.id, results: false };
+        if (!p.mine.length && !show) show = { id: p.id, results: false };
       }
     } else seen.delete(openKey); // riaperto più avanti: si ripresenta
   }
@@ -122,8 +123,12 @@ const STATUS: Record<PollView["status"], string> = { draft: "📝 Preparato", op
 function PollCard({ poll, polls, live, onEdit }: { poll: PollView; polls: PollsHook; live: boolean; onEdit: () => void }) {
   const manager = !!polls.state?.manager;
   const canVote = poll.status === "open";
-  const total = poll.counts?.reduce((a, b) => a + b, 0) ?? 0;
-  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  // Percentuali su chi ha votato (con più risposte la somma può superare il 100%)
+  const pct = (n: number) => (poll.voters ? Math.round((n / poll.voters) * 100) : 0);
+  const voted = poll.mine.length > 0;
+  // Una risposta: la scelta sostituisce la precedente. Più risposte: ogni tocco aggiunge o toglie quella risposta.
+  const choose = (i: number) =>
+    polls.vote(poll.id, poll.multiple ? (poll.mine.includes(i) ? poll.mine.filter((c) => c !== i) : [...poll.mine, i]) : [i]);
   const remove = () => confirm(`Eliminare il sondaggio "${poll.question}"? Si perdono anche i voti.`) && polls.act("delete", poll.id);
 
   return (
@@ -132,6 +137,7 @@ function PollCard({ poll, polls, live, onEdit }: { poll: PollView; polls: PollsH
         <h3 className="poll-question">{poll.question}</h3>
         <span className="poll-tags">
           {poll.secret ? "🔒 Segreto" : "👁️ Palese"}
+          {poll.multiple && " · ☑️ Più risposte"}
           {manager || poll.status === "closed" ? ` · ${STATUS[poll.status]}` : ""}
         </span>
       </div>
@@ -139,18 +145,19 @@ function PollCard({ poll, polls, live, onEdit }: { poll: PollView; polls: PollsH
         {poll.options.map((o, i) => {
           const n = poll.counts?.[i];
           const names = poll.names?.[i] ?? [];
+          const mine = poll.mine.includes(i);
           return (
             <div key={i} className="poll-option-wrap">
               <button
                 type="button"
-                className={`poll-option ${poll.mine === i ? "mine" : ""}`}
-                onClick={() => polls.vote(poll.id, i)}
+                className={`poll-option ${mine ? "mine" : ""}`}
+                onClick={() => choose(i)}
                 disabled={!canVote || polls.busy}
-                aria-pressed={poll.mine === i}
+                aria-pressed={mine}
               >
                 {n !== undefined && <span className="poll-bar" style={{ width: `${pct(n)}%` }} />}
                 <span className="poll-option-text">
-                  {poll.mine === i && "✓ "}
+                  {poll.multiple ? (mine ? "☑ " : "☐ ") : mine && "✓ "}
                   {o}
                 </span>
                 {n !== undefined && (
@@ -166,7 +173,14 @@ function PollCard({ poll, polls, live, onEdit }: { poll: PollView; polls: PollsH
       </div>
       <p className="muted poll-note">
         {poll.voters} {poll.voters === 1 ? "voto" : "voti"}
-        {canVote && (poll.mine === null ? " · scegli una risposta" : " · puoi cambiare il voto finché il sondaggio è aperto")}
+        {canVote &&
+          (poll.multiple
+            ? voted
+              ? " · tocca una risposta per aggiungerla o toglierla, finché il sondaggio è aperto"
+              : " · scegli una o più risposte"
+            : voted
+              ? " · puoi cambiare il voto finché il sondaggio è aperto"
+              : " · scegli una risposta")}
         {poll.secret
           ? manager
             ? poll.shown
@@ -215,11 +229,12 @@ function PollForm({ poll, polls, live, onDone }: { poll?: PollView; polls: Polls
   const [question, setQuestion] = useState(poll?.question ?? "");
   const [options, setOptions] = useState<string[]>(poll?.options ?? ["", ""]);
   const [secret, setSecret] = useState(poll?.secret ?? true);
+  const [multiple, setMultiple] = useState(poll?.multiple ?? false);
   const filled = options.map((o) => o.trim()).filter(Boolean);
   const ready = !!question.trim() && filled.length >= 2;
 
   const save = async (open: boolean) => {
-    const data = { question: question.trim(), options: filled, secret, open };
+    const data = { question: question.trim(), options: filled, secret, multiple, open };
     if (await (poll ? polls.act("update", poll.id, data) : polls.act("create", undefined, data))) {
       if (poll && open) await polls.act("open", poll.id);
       onDone();
@@ -267,6 +282,20 @@ function PollForm({ poll, polls, live, onDone }: { poll?: PollView; polls: Polls
             + Aggiungi una risposta
           </button>
         )}
+      </div>
+      <div className="field">
+        <span>Quante risposte</span>
+        <div className="view-toggle">
+          <button type="button" className={multiple ? "" : "active"} onClick={() => setMultiple(false)}>
+            ◉ Una risposta
+          </button>
+          <button type="button" className={multiple ? "active" : ""} onClick={() => setMultiple(true)}>
+            ☑️ Più risposte
+          </button>
+        </div>
+        <p className="muted" style={{ margin: 0 }}>
+          {multiple ? "Ognuno può scegliere tutte le risposte che vuole." : "Ognuno sceglie una sola risposta."}
+        </p>
       </div>
       <div className="field">
         <span>Voto</span>

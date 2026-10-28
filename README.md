@@ -24,7 +24,7 @@ oppure si copia dentro un altro sito fatto con Next.js.
   (si va da soli alla pagina di chi parla; chi cambia pagina per guardare gli altri ci resta 15 secondi).
 - **Sondaggi**: l'organizzatore li prepara anche prima (pure per le chiamate programmate), li apre e li chiude quando
   vuole. **Segreti**: organizzatori e co-organizzatori vedono tutto (anche chi ha votato cosa); gli altri vedono
-  solo i numeri, quando l'organizzatore li mostra. **Palesi**: tutti vedono i risultati con i nomi. Salvati in `app_settings` (nessuna tabella nuova).
+  solo i numeri, quando l'organizzatore li mostra. Si può scegliere tra **una risposta** o **più risposte**. **Palesi**: tutti vedono i risultati con i nomi. Salvati in `app_settings` (nessuna tabella nuova).
 - **Finestrella** (Picture-in-Picture) quando si cambia scheda: Chrome/Edge da computer la aprono da soli se la pagina
   usa microfono o fotocamera; altrove (Safari, iPhone, iPad, webinar) con il pulsante della finestrella.
 - Ottimizzata per telefono e iPad.

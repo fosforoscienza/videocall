@@ -70,6 +70,7 @@ export const MAX_BREAKOUT_NAME = 40;
 // Segreti: chi gestisce la chiamata vede tutto (anche chi ha votato cosa); gli altri vedono solo i numeri,
 // e solo quando l'organizzatore li mostra.
 // Palesi: tutti vedono i risultati con il nome di chi ha votato e cosa.
+// Con "più risposte" ognuno può sceglierne quante vuole (almeno una).
 // draft = preparato (i partecipanti non lo vedono), open = si vota, closed = chiuso
 export type PollStatus = "draft" | "open" | "closed";
 export type Poll = {
@@ -77,15 +78,19 @@ export type Poll = {
   question: string;
   options: string[];
   secret: boolean;
+  // si possono scegliere più risposte
+  multiple: boolean;
   status: PollStatus;
   // risultati mostrati a tutti (conta solo per i sondaggi segreti)
   shown: boolean;
 };
 // Sondaggio visto da chi apre il pannello: il suo voto e, se può vederli, i risultati
 export type PollView = Poll & {
-  mine: number | null;
+  // risposte scelte da chi guarda (vuoto = non ha votato)
+  mine: number[];
   // quante persone hanno votato
   voters: number;
+  // quante persone hanno scelto ogni risposta (con più risposte la somma supera chi ha votato)
   counts?: number[];
   // chi ha scelto ogni opzione: nei palesi per tutti, nei segreti solo per chi gestisce la chiamata
   names?: string[][];
