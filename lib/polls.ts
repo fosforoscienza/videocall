@@ -109,8 +109,8 @@ export async function pollsFor(callId: string, identity: string, manager: boolea
     const view: PollView = { ...p, mine: given.find((v) => v.identity === identity)?.choice ?? null, voters: given.length };
     if (manager || pollPublic(p)) {
       view.counts = p.options.map((_, i) => given.filter((v) => v.choice === i).length);
-      // Nomi solo nei palesi: nei segreti nessuno (nemmeno l'organizzatore) vede chi ha votato cosa
-      if (!p.secret) view.names = p.options.map((_, i) => given.filter((v) => v.choice === i).map((v) => v.name));
+      // Nomi: nei palesi a tutti, nei segreti solo a organizzatori e co-organizzatori (anche dopo aver mostrato i risultati)
+      if (manager || !p.secret) view.names = p.options.map((_, i) => given.filter((v) => v.choice === i).map((v) => v.name));
     }
     return view;
   });

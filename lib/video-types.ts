@@ -67,7 +67,8 @@ export const MAX_BREAKOUT_NAME = 40;
 
 // ---------- sondaggi ----------
 // Li prepara l'organizzatore (anche prima della chiamata) e li apre e chiude quando vuole.
-// Segreti: i risultati (solo i numeri, senza nomi) li vede chi gestisce la chiamata, finché non li mostra a tutti.
+// Segreti: chi gestisce la chiamata vede tutto (anche chi ha votato cosa); gli altri vedono solo i numeri,
+// e solo quando l'organizzatore li mostra.
 // Palesi: tutti vedono i risultati con il nome di chi ha votato e cosa.
 // draft = preparato (i partecipanti non lo vedono), open = si vota, closed = chiuso
 export type PollStatus = "draft" | "open" | "closed";
@@ -86,7 +87,7 @@ export type PollView = Poll & {
   // quante persone hanno votato
   voters: number;
   counts?: number[];
-  // solo nei sondaggi palesi: chi ha scelto ogni opzione
+  // chi ha scelto ogni opzione: nei palesi per tutti, nei segreti solo per chi gestisce la chiamata
   names?: string[][];
 };
 export type PollsState = { polls: PollView[]; manager: boolean };

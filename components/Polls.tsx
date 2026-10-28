@@ -170,11 +170,11 @@ function PollCard({ poll, polls, live, onEdit }: { poll: PollView; polls: PollsH
         {poll.secret
           ? manager
             ? poll.shown
-              ? " · risultati visibili a tutti (senza nomi)"
-              : " · i risultati li vedono solo gli organizzatori"
+              ? " · risultati visibili a tutti (i nomi solo agli organizzatori)"
+              : " · risultati e nomi li vedono solo gli organizzatori"
             : poll.shown
               ? " · voto segreto"
-              : " · voto segreto: i risultati li vede l'organizzatore"
+              : " · voto segreto: i risultati li vedono solo gli organizzatori"
           : " · voto palese: tutti vedono chi ha votato e cosa"}
       </p>
       {manager && (
@@ -280,7 +280,7 @@ function PollForm({ poll, polls, live, onDone }: { poll?: PollView; polls: Polls
         </div>
         <p className="muted" style={{ margin: 0 }}>
           {secret
-            ? "Nessuno vede chi ha votato cosa. I risultati li vedono solo gli organizzatori, finché non li mostri a tutti."
+            ? "Gli organizzatori vedono i risultati e chi ha votato cosa. Gli altri non vedono niente finché non mostri i risultati, e anche allora solo i numeri, senza nomi."
             : "Tutti vedono i risultati con il nome di chi ha votato e cosa ha scelto."}
         </p>
       </div>
