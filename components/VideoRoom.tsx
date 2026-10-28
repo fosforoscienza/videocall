@@ -1240,7 +1240,7 @@ export default function VideoRoom({
   // Schermo stretto: se i comandi secondari sono più di uno vanno nel menu "Altro"
   const compact = w < 600;
   // (i dispositivi ci sono sempre)
-  const secondary = [!listening && canFlip && camOn, canShareScreen, !!host && !!screen && !boardOpen, wbManage, true, canPip, true, showPolls].filter(Boolean).length;
+  const secondary = [!listening && canFlip && camOn, canShareScreen, !!host && !!screen && !boardOpen, wbManage, true, canPip, true].filter(Boolean).length;
   const useMore = compact && secondary >= 2;
   const moreDo = (fn: () => void) => () => {
     setMoreOpen(false);
@@ -1521,7 +1521,8 @@ export default function VideoRoom({
               <Icon name="layout" />
             </button>
           )}
-          {!useMore && showPolls && (
+          {/* Sondaggi sempre nella barra, anche sul telefono (non nel menu "Altro") */}
+          {showPolls && (
             <button className={`call-btn ${pollsOpen ? "active" : ""}`} onClick={openPolls} aria-label="Sondaggi" title="Sondaggi">
               <Icon name="poll" />
               {toVote > 0 && <b className="call-badge">{toVote}</b>}
@@ -1536,7 +1537,6 @@ export default function VideoRoom({
           {useMore && (
             <button className={`call-btn ${moreOpen ? "active" : ""}`} onClick={() => setMoreOpen(true)} aria-label="Altri comandi" title="Altri comandi">
               <Icon name="more" />
-              {showPolls && toVote > 0 && <b className="call-badge">{toVote}</b>}
             </button>
           )}
           <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata" title="Esci dalla videochiamata">
@@ -1722,11 +1722,6 @@ export default function VideoRoom({
             {!listening && canFlip && camOn && (
               <button className="btn btn-ghost" onClick={moreDo(flip)}>
                 🔄 Gira la fotocamera
-              </button>
-            )}
-            {showPolls && (
-              <button className="btn btn-ghost" onClick={moreDo(openPolls)}>
-                📊 Sondaggi{toVote > 0 ? ` (${toVote} da votare)` : ""}
               </button>
             )}
             <button className="btn btn-ghost" onClick={moreDo(() => setDevicesOpen(true))}>

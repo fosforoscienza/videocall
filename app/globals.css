@@ -2254,3 +2254,15 @@ video.mirror {
 .call-link-actions .btn {
   flex: 1;
 }
+
+/* Telefoni stretti (es. 360 px): i comandi dell'organizzatore (con sondaggi e persone) stanno su una riga */
+@media (max-width: 389px) {
+  .call-controls .call-btn {
+    width: 42px;
+    height: 42px;
+  }
+  .call-controls .call-btn .icon {
+    width: 21px;
+    height: 21px;
+  }
+}
