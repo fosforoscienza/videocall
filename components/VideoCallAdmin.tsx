@@ -10,6 +10,7 @@ import { callSlug, DEFAULT_ACCESS, shareText, type BreakoutRoom, type CallAccess
 import AccessPicker from "./AccessPicker";
 import { fetchRoomTicket } from "@/lib/breakout-client";
 import { CallPolls } from "./Polls";
+import { copyText } from "@/lib/clipboard";
 
 // Scheda Video dell'organizzatore: avvia la videochiamata, condivide il link, decide chi entra
 // (children: sezioni in più in fondo alla pagina, es. gli utenti per gli amministratori)
@@ -46,7 +47,7 @@ export default function VideoCallAdmin({ host, children }: { host: HostCall; chi
   }
 
   async function copy() {
-    await navigator.clipboard?.writeText(link).catch(() => {});
+    if (!(await copyText(link))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -162,7 +163,7 @@ export default function VideoCallAdmin({ host, children }: { host: HostCall; chi
               <input className="input" readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label="Link della videochiamata" />
               <div className="row">
                 <button className="btn btn-ghost btn-small" onClick={copy}>
-                  {copied ? "Copiato!" : "Copia"}
+                  {copied ? "✓ Copiato" : "Copia link"}
                 </button>
                 <button className="btn btn-ghost btn-small" onClick={share}>
                   Condividi

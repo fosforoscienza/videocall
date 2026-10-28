@@ -2249,3 +2249,8 @@ video.mirror {
   flex: 1;
   min-width: 0;
 }
+
+/* "Copia link" e "Condividi" nel pannello Persone */
+.call-link-actions .btn {
+  flex: 1;
+}

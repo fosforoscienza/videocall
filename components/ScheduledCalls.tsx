@@ -6,6 +6,7 @@ import ListenToggle from "./ListenToggle";
 import { callSlug, DEFAULT_ACCESS, formatWhen, fromLocalInput, shareText, toLocalInput, type CallAccess, type CallInfo } from "@/lib/video-types";
 import AccessPicker from "./AccessPicker";
 import { CallPolls } from "./Polls";
+import { copyText } from "@/lib/clipboard";
 
 const SOON = 15 * 60 * 1000;
 
@@ -16,8 +17,7 @@ async function shareLink(call: CallInfo, link: string, onCopied: () => void) {
     await nav.share({ title: call.title || "Videochiamata", text, url: link }).catch(() => {});
     return;
   }
-  await navigator.clipboard?.writeText(link).catch(() => {});
-  onCopied();
+  if (await copyText(link)) onCopied();
 }
 
 function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number }) {
@@ -85,8 +85,7 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
         <button
           className="btn btn-ghost btn-small"
           onClick={async () => {
-            await navigator.clipboard?.writeText(link).catch(() => {});
-            copied2s();
+            if (await copyText(link)) copied2s();
           }}
         >
           {copied ? "Copiato!" : "Copia link"}

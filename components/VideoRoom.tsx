@@ -31,6 +31,7 @@ import { BREAKOUT_TOPIC, POLL_TOPIC, shareText, type BreakoutRoom, type Breakout
 import Icon from "./Icons";
 import BreakoutEditor from "./BreakoutEditor";
 import PollsPanel, { pollsToVote, pollToShow, usePolls } from "./Polls";
+import { copyText } from "@/lib/clipboard";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -1018,19 +1019,24 @@ export default function VideoRoom({
     };
   });
 
+  // Copia il link negli appunti; "Condividi" apre la condivisione del telefono (dove c'è)
+  const copyLink = useCallback(async () => {
+    if (!link) return;
+    if (!(await copyText(link))) {
+      setNotice("Non riesco a copiare il link: tienilo premuto nella barra degli indirizzi e copialo da lì.");
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [link]);
+  const canNativeShare = typeof navigator !== "undefined" && "share" in navigator;
   const share = useCallback(async () => {
     if (!link) return;
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-    if (nav.share) {
-      await nav
-        .share({ title: title || "Videochiamata", text: shareText(title, host?.call?.needs_password ? host.call.password : ""), url: link })
-        .catch(() => {});
-      return;
-    }
-    await navigator.clipboard?.writeText(link).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [link, title]);
+    await nav
+      .share?.({ title: title || "Videochiamata", text: shareText(title, host?.call?.needs_password ? host.call.password : ""), url: link })
+      .catch(() => {});
+  }, [link, title, host?.call]);
 
   if (!room) return createPortal(<div className="call-room" />, document.body);
 
@@ -1559,18 +1565,6 @@ export default function VideoRoom({
               }}
               onChange={changeDevice}
             />
-            {canRooms && (
-              <button
-                className="btn btn-gold"
-                onClick={() => {
-                  setDevicesOpen(false);
-                  if (bo?.rooms.length) setRoomsOpen(true);
-                  else setEditRooms(true);
-                }}
-              >
-                {bo?.rooms.length ? "Gestisci le stanze" : "Dividi in stanze"}
-              </button>
-            )}
             {"documentPictureInPicture" in window && (
               <label className="call-switch-row">
                 <input
@@ -1984,11 +1978,30 @@ export default function VideoRoom({
               })}
             </section>
 
+            {canRooms && (
+              <button
+                className="btn btn-gold"
+                onClick={() => {
+                  setPanel(false);
+                  if (bo?.rooms.length) setRoomsOpen(true);
+                  else setEditRooms(true);
+                }}
+              >
+                {bo?.rooms.length ? "Gestisci le stanze" : "Dividi in stanze"}
+              </button>
+            )}
             {host.error && <p className="error">{host.error}</p>}
             {link && (
-              <button className="btn btn-ghost" onClick={share}>
-                {copied ? "Link copiato!" : "Condividi il link"}
-              </button>
+              <div className="row call-link-actions">
+                <button className="btn btn-ghost" onClick={copyLink}>
+                  {copied ? "✓ Link copiato" : "Copia link"}
+                </button>
+                {canNativeShare && (
+                  <button className="btn btn-ghost" onClick={share}>
+                    Condividi
+                  </button>
+                )}
+              </div>
             )}
             <button className="btn btn-danger" onClick={endForAll} disabled={host.busy}>
               Termina per tutti
