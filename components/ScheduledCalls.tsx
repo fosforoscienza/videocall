@@ -5,6 +5,8 @@ import type { HostCall } from "@/lib/useHostCall";
 import ListenToggle from "./ListenToggle";
 import { callSlug, DEFAULT_ACCESS, formatWhen, fromLocalInput, shareText, toLocalInput, type CallAccess, type CallInfo } from "@/lib/video-types";
 import AccessPicker from "./AccessPicker";
+import { CallPolls } from "./Polls";
+import { copyText } from "@/lib/clipboard";
 
 const SOON = 15 * 60 * 1000;
 
@@ -15,8 +17,7 @@ async function shareLink(call: CallInfo, link: string, onCopied: () => void) {
     await nav.share({ title: call.title || "Videochiamata", text, url: link }).catch(() => {});
     return;
   }
-  await navigator.clipboard?.writeText(link).catch(() => {});
-  onCopied();
+  if (await copyText(link)) onCopied();
 }
 
 function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number }) {
@@ -26,6 +27,7 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
   const [listen, setListen] = useState(!!call.listen_only);
   const [access, setAccess] = useState<CallAccess>({ mode: call.access ?? DEFAULT_ACCESS.mode, password: call.password ?? "" });
   const [copied, setCopied] = useState(false);
+  const [polls, setPolls] = useState(false);
   const link = `${window.location.origin}/call/${callSlug(call)}`;
   const startsAt = call.starts_at ? Date.parse(call.starts_at) : 0;
   const due = startsAt - now < SOON;
@@ -83,14 +85,16 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
         <button
           className="btn btn-ghost btn-small"
           onClick={async () => {
-            await navigator.clipboard?.writeText(link).catch(() => {});
-            copied2s();
+            if (await copyText(link)) copied2s();
           }}
         >
           {copied ? "Copiato!" : "Copia link"}
         </button>
         <button className="btn btn-ghost btn-small" onClick={() => shareLink(call, link, copied2s)}>
           Condividi
+        </button>
+        <button className={`btn btn-small ${polls ? "btn-gold" : "btn-ghost"}`} onClick={() => setPolls(!polls)} aria-expanded={polls}>
+          📊 Sondaggi
         </button>
         <button className="btn btn-ghost btn-small" onClick={() => setEditing(true)}>
           Modifica
@@ -110,6 +114,8 @@ function Item({ call, host, now }: { call: CallInfo; host: HostCall; now: number
           Avvia ora
         </button>
       </div>
+      {/* Sondaggi preparati prima: si aprono durante la videochiamata */}
+      {polls && <CallPolls code={call.code} live={false} />}
     </div>
   );
 }

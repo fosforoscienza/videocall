@@ -16,6 +16,7 @@ export type IconName =
   | "chat"
   | "layout"
   | "people"
+  | "poll"
   | "more"
   | "leave";
 
@@ -97,6 +98,15 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <circle cx="9" cy="8" r="3.5" />
       <path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.5a6.5 6.5 0 0 1 3 5.5" />
+    </>
+  ),
+  // sondaggio: barre dei risultati
+  poll: (
+    <>
+      <path d="M4 20h16" />
+      <rect x="5" y="11" width="3.5" height="6" rx="1" />
+      <rect x="10.25" y="5" width="3.5" height="12" rx="1" />
+      <rect x="15.5" y="8.5" width="3.5" height="8.5" rx="1" />
     </>
   ),
   more: (

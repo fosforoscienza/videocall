@@ -27,9 +27,11 @@ import { applyBoard, BOARD_TOPIC, COLORS, syncMessages, type BoardMsg, type Stro
 import { allowedFromGuest, applyWb, emptyBoard, parseWb, WB_TOPIC, wbSync, type WbMode, type WbMsg, type WbState } from "@/lib/whiteboard";
 import { VIDEO_CONFIG } from "@/lib/video-config";
 import { seenAssignment } from "@/lib/breakout-client";
-import { BREAKOUT_TOPIC, shareText, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
+import { BREAKOUT_TOPIC, POLL_TOPIC, shareText, type BreakoutRoom, type BreakoutState } from "@/lib/video-types";
 import Icon from "./Icons";
 import BreakoutEditor from "./BreakoutEditor";
+import PollsPanel, { pollsToVote, pollToShow, usePolls } from "./Polls";
+import { copyText } from "@/lib/clipboard";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -47,6 +49,8 @@ export type LeaveReason = "left" | "removed" | "ended" | "duplicate" | "error";
 type Layout = { mode: "grid" | "speaker"; pin: string | null };
 const LAYOUT_TOPIC = "layout";
 const PAGER_H = 40;
+// Quanto si resta sulla pagina scelta a mano prima di tornare a quella di chi parla
+const PAGE_HOLD = 15000;
 
 const RESOLUTION = VideoPresets.h540.resolution;
 
@@ -351,6 +355,15 @@ export default function VideoRoom({
         loadBoRef.current();
         return;
       }
+      // Sondaggi aperti, chiusi, cambiati o nuovi voti: avviso mandato dal server
+      if (topic === POLL_TOPIC && !from) {
+        try {
+          pollNudgeRef.current(JSON.parse(decoder.decode(payload)));
+        } catch {
+          pollNudgeRef.current();
+        }
+        return;
+      }
       if (topic === CHAT_TOPIC && from) {
         try {
           const m = JSON.parse(decoder.decode(payload)) as { id?: unknown; text?: unknown };
@@ -643,16 +656,22 @@ export default function VideoRoom({
   const curPage = Math.min(page, pages - 1);
   const visible = others.slice(curPage * perPage, (curPage + 1) * perPage);
 
-  // Chi parla dev'essere sempre visibile: se è in un'altra pagina, si passa a quella
+  // Chi parla dev'essere sempre visibile: se è in un'altra pagina, si passa a quella.
+  // Chi cambia pagina da sé (per vedere le altre persone) ci resta PAGE_HOLD, poi si torna da chi parla.
+  const [pageHold, setPageHold] = useState(0);
+  const goPage = (n: number) => {
+    setPage(n);
+    setPageHold(Date.now());
+  };
   const speakingIds = room && connected ? room.activeSpeakers.filter((p) => !p.isLocal).map((p) => p.identity) : [];
   const hiddenSpeaker = speakingIds.find((id) => others.some((p) => p.identity === id) && !visible.some((p) => p.identity === id));
   const speakerPage = hiddenSpeaker ? Math.floor(others.findIndex((p) => p.identity === hiddenSpeaker) / perPage) : -1;
   useEffect(() => {
     if (speakerPage < 0) return;
     // Un attimo di attesa, per non saltare di pagina per un colpo di tosse
-    const t = setTimeout(() => setPage(speakerPage), 600);
+    const t = setTimeout(() => setPage(speakerPage), Math.max(600, pageHold + PAGE_HOLD - Date.now()));
     return () => clearTimeout(t);
-  }, [speakerPage, hiddenSpeaker]);
+  }, [speakerPage, hiddenSpeaker, pageHold]);
 
   // L'organizzatore cambia la disposizione per tutti
   const shareLayout = useCallback(
@@ -766,6 +785,30 @@ export default function VideoRoom({
     if (!confirm("Chiudere tutte le stanze? Tutti tornano in plenaria.")) return;
     if (await saveRooms([], {})) setRoomsOpen(false);
   };
+  // ---------- sondaggi ----------
+  // Li gestisce chi gestisce la chiamata; gli altri votano. Un sondaggio appena aperto (o i risultati appena
+  // mostrati) compare da solo a chi partecipa.
+  const polls = usePolls(code, connected, manager ? 10000 : 20000);
+  const pollNudgeRef = useRef(polls.nudge);
+  useLayoutEffect(() => {
+    pollNudgeRef.current = polls.nudge;
+  });
+  const [pollsOpen, setPollsOpen] = useState(false);
+  const [pollFocus, setPollFocus] = useState<string | null>(null);
+  const pollsOpenRef = useRef(false);
+  useLayoutEffect(() => {
+    pollsOpenRef.current = pollsOpen;
+  });
+  useEffect(() => {
+    if (!code) return;
+    const show = pollToShow(code, polls.state);
+    if (!show) return;
+    playSound("food");
+    // Con il pannello già aperto resta l'elenco completo
+    if (!pollsOpenRef.current) setPollFocus(show.id);
+    setPollsOpen(true);
+  }, [code, polls.state]);
+
   const meCohost = room && connected ? isCohost(room.localParticipant) : false;
   const lastMeHost = useRef<boolean | null>(null);
   const lastMeCohost = useRef(false);
@@ -812,6 +855,7 @@ export default function VideoRoom({
       setViewMenu(false);
       setMoreOpen(false);
       setDevicesOpen(false);
+      setPollsOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -975,19 +1019,24 @@ export default function VideoRoom({
     };
   });
 
+  // Copia il link negli appunti; "Condividi" apre la condivisione del telefono (dove c'è)
+  const copyLink = useCallback(async () => {
+    if (!link) return;
+    if (!(await copyText(link))) {
+      setNotice("Non riesco a copiare il link: tienilo premuto nella barra degli indirizzi e copialo da lì.");
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [link]);
+  const canNativeShare = typeof navigator !== "undefined" && "share" in navigator;
   const share = useCallback(async () => {
     if (!link) return;
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
-    if (nav.share) {
-      await nav
-        .share({ title: title || "Videochiamata", text: shareText(title, host?.call?.needs_password ? host.call.password : ""), url: link })
-        .catch(() => {});
-      return;
-    }
-    await navigator.clipboard?.writeText(link).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [link, title]);
+    await nav
+      .share?.({ title: title || "Videochiamata", text: shareText(title, host?.call?.needs_password ? host.call.password : ""), url: link })
+      .catch(() => {});
+  }, [link, title, host?.call]);
 
   if (!room) return createPortal(<div className="call-room" />, document.body);
 
@@ -1180,6 +1229,14 @@ export default function VideoRoom({
     ...all.filter((p) => p !== pipFocus).sort((a, b) => Number(b.isSpeaking) - Number(a.isSpeaking)),
   ].slice(0, 3);
 
+  // Sondaggi: chi gestisce li vede sempre (per prepararli), gli altri appena ce n'è uno
+  const showPolls = !!code && connected && (manager || (polls.state?.polls.length ?? 0) > 0);
+  const toVote = pollsToVote(polls.state);
+  const openPolls = () => {
+    setPollFocus(null);
+    setPollsOpen(true);
+  };
+
   // Schermo stretto: se i comandi secondari sono più di uno vanno nel menu "Altro"
   const compact = w < 600;
   // (i dispositivi ci sono sempre)
@@ -1192,13 +1249,13 @@ export default function VideoRoom({
 
   const pager = pages > 1 && (
     <div className="call-pager">
-      <button onClick={() => setPage(curPage - 1)} disabled={curPage === 0} aria-label="Pagina precedente">
+      <button onClick={() => goPage(curPage - 1)} disabled={curPage === 0} aria-label="Pagina precedente">
         ‹
       </button>
       <span>
         {curPage + 1} / {pages}
       </span>
-      <button onClick={() => setPage(curPage + 1)} disabled={curPage >= pages - 1} aria-label="Pagina successiva">
+      <button onClick={() => goPage(curPage + 1)} disabled={curPage >= pages - 1} aria-label="Pagina successiva">
         ›
       </button>
     </div>
@@ -1464,6 +1521,13 @@ export default function VideoRoom({
               <Icon name="layout" />
             </button>
           )}
+          {/* Sondaggi sempre nella barra, anche sul telefono (non nel menu "Altro") */}
+          {showPolls && (
+            <button className={`call-btn ${pollsOpen ? "active" : ""}`} onClick={openPolls} aria-label="Sondaggi" title="Sondaggi">
+              <Icon name="poll" />
+              {toVote > 0 && <b className="call-badge">{toVote}</b>}
+            </button>
+          )}
           {host && (
             <button className="call-btn" onClick={() => setPanel(true)} aria-label="Persone" title="Persone">
               <Icon name="people" />
@@ -1501,18 +1565,6 @@ export default function VideoRoom({
               }}
               onChange={changeDevice}
             />
-            {canRooms && (
-              <button
-                className="btn btn-gold"
-                onClick={() => {
-                  setDevicesOpen(false);
-                  if (bo?.rooms.length) setRoomsOpen(true);
-                  else setEditRooms(true);
-                }}
-              >
-                {bo?.rooms.length ? "Gestisci le stanze" : "Dividi in stanze"}
-              </button>
-            )}
             {"documentPictureInPicture" in window && (
               <label className="call-switch-row">
                 <input
@@ -1596,6 +1648,7 @@ export default function VideoRoom({
               )}
               {unread > 0 && <span className="pip-unread">💬 {unread}</span>}
               {host && pending.length > 0 && <span className="pip-unread">🚪 {pending.length}</span>}
+              {toVote > 0 && <span className="pip-unread">📊 {toVote}</span>}
               <button className="call-btn leave" onClick={leave} aria-label="Esci dalla videochiamata" title="Esci dalla videochiamata">
                 <Icon name="leave" />
               </button>
@@ -1746,6 +1799,20 @@ export default function VideoRoom({
                 🚪 Togli dalla chiamata
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {showPolls && pollsOpen && (
+        <div className="modal-backdrop call-panel-backdrop" onClick={() => setPollsOpen(false)}>
+          <div className="card modal call-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="topbar">
+              <h2 className="title">{pollFocus ? "Sondaggio" : "Sondaggi"}</h2>
+              <button className="call-close" onClick={() => setPollsOpen(false)} aria-label="Chiudi">
+                ✕
+              </button>
+            </div>
+            <PollsPanel polls={polls} focus={pollFocus} onShowAll={() => setPollFocus(null)} />
           </div>
         </div>
       )}
@@ -1906,11 +1973,30 @@ export default function VideoRoom({
               })}
             </section>
 
+            {canRooms && (
+              <button
+                className="btn btn-gold"
+                onClick={() => {
+                  setPanel(false);
+                  if (bo?.rooms.length) setRoomsOpen(true);
+                  else setEditRooms(true);
+                }}
+              >
+                {bo?.rooms.length ? "Gestisci le stanze" : "Dividi in stanze"}
+              </button>
+            )}
             {host.error && <p className="error">{host.error}</p>}
             {link && (
-              <button className="btn btn-ghost" onClick={share}>
-                {copied ? "Link copiato!" : "Condividi il link"}
-              </button>
+              <div className="row call-link-actions">
+                <button className="btn btn-ghost" onClick={copyLink}>
+                  {copied ? "✓ Link copiato" : "Copia link"}
+                </button>
+                {canNativeShare && (
+                  <button className="btn btn-ghost" onClick={share}>
+                    Condividi
+                  </button>
+                )}
+              </div>
             )}
             <button className="btn btn-danger" onClick={endForAll} disabled={host.busy}>
               Termina per tutti
